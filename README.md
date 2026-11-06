@@ -100,14 +100,13 @@ et tape `ip -br a` (une adresse du genre `192.168.1.42`), puis sur ton ordinateu
 
 Ensuite, récupère Scaros sur le PC, au choix :
 
-- **directement depuis GitHub** : remplace `PROPRIÉTAIRE/DÉPÔT` par l'adresse de ce dépôt (celle de la page GitHub,
-  après `github.com/`) :
+- **directement depuis GitHub** :
 
   ```bash
   su -
-  wget -O scaros.tar.gz https://github.com/PROPRIÉTAIRE/DÉPÔT/archive/HEAD.tar.gz
+  wget -O scaros.tar.gz https://github.com/Sc4ros/Scaros-OS/archive/HEAD.tar.gz
   tar xf scaros.tar.gz
-  bash DÉPÔT-*/install.sh
+  bash Scaros-OS-*/install.sh
   ```
 
 - **avec une clé USB** : sur ton autre ordinateur, **Code > Download ZIP** sur la page du dépôt, décompresse-le et
