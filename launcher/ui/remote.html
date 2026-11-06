@@ -1,0 +1,637 @@
+<!doctype html>
+<html lang="fr">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0D0D12">
+<meta name="scaros-build" content="__BUILD__">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Scaros">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="icon" type="image/svg+xml" href="/icons/favicon.svg">
+<link rel="icon" type="image/png" href="/icons/icon-192.png">
+<title>Télécommande Scaros</title>
+<style>
+@font-face { font-family: "Figtree"; src: url("/fonts/figtree.woff2") format("woff2"); font-weight: 400 700; font-display: swap; }
+/* Layout: one screen, no scrolling — header, search, the Flèches/Souris switch, a big touch
+   pad (arrows: swipe to move, tap to select; mouse: a trackpad), then the keys laid out like an
+   Apple TV remote (Retour, Accueil, Lecture, Menu, and the volume rocker on the right), channels.
+   Sized on the screen height. */
+:root {
+  --ink: #06080c;
+  --raised: #10141c;
+  --key: #161b25;
+  --key-2: #1d2330;
+  --line: #ffffff1a;
+  --text: #f1f3f8;
+  --text-2: #c7cdd8;
+  --muted: #8a91a1;
+  --ok: #6cc04a;
+  --led: #ff3b30;
+  --font: "Figtree", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --gap: clamp(8px, 1.5dvh, 14px);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { height: 100%; background: var(--ink); }
+body {
+  margin: 0; min-height: 100%; color: var(--text); font-family: var(--font); font-size: 15px; line-height: 1.3;
+  background: radial-gradient(120% 50% at 50% 0%, #151c2c 0%, var(--ink) 65%);
+  -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none;
+  user-select: none; -webkit-user-select: none; touch-action: manipulation; overscroll-behavior: none;
+}
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; }
+.ic { display: block; width: 22px; height: 22px; }
+
+main {
+  display: flex; flex-direction: column; gap: var(--gap);
+  height: 100vh; height: 100dvh; max-width: 440px; margin: 0 auto;
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) max(16px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 12px) max(16px, env(safe-area-inset-left, 0px));
+}
+main > * { flex: none; }
+header { display: flex; align-items: center; gap: 10px; min-height: 40px; }
+.mark { flex: none; width: 34px; height: 34px; }
+.htext { display: flex; flex-direction: column; min-width: 0; }
+.word { display: block; width: 72px; height: 13.2px; margin: 2px 0 3px; color: var(--text); }
+.now { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12.5px; color: var(--muted); }
+.now b { color: var(--text-2); font-weight: 600; }
+.conn { margin-left: auto; flex: none; display: flex; align-items: center; gap: 6px; padding: 6px 11px; font-size: 12.5px; font-weight: 600; color: var(--text-2); border: 1px solid var(--line); border-radius: 99px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.online .dot { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+
+.banner, .offline { display: flex; align-items: flex-start; gap: 10px; margin: 0; padding: 10px 12px; font-size: 13.5px; line-height: 1.35; border-radius: 14px; }
+.banner { background: #1b2740; border: 1px solid #4c8dff40; }
+.banner a { color: #9cc0ff; font-weight: 700; }
+.banner p { margin: 0; flex: 1; }
+.banner button { flex: none; width: 28px; height: 28px; margin: -3px -4px 0 0; padding: 0; border: 0; border-radius: 50%; background: #ffffff14; cursor: pointer; }
+.offline { background: #3a1c1f; border: 1px solid #ff6b6b40; }
+
+.type { display: flex; gap: 8px; }
+.type input {
+  flex: 1; min-width: 0; height: 44px; padding: 0 14px; font: inherit; font-size: 16px; color: var(--text);
+  background: var(--key); border: 1px solid var(--line); border-radius: 13px; user-select: text; -webkit-user-select: text;
+}
+.type input::placeholder { color: var(--muted); }
+.type input:focus { outline: 2px solid #ffffff60; outline-offset: 1px; }
+.type button { flex: none; display: grid; place-items: center; width: 48px; height: 44px; padding: 0; border: 0; border-radius: 13px; background: var(--text); color: var(--ink); cursor: pointer; }
+
+/* Flèches / Souris */
+.seg { display: flex; align-self: center; padding: 3px; border-radius: 99px; background: var(--raised); border: 1px solid var(--line); }
+.seg button { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 16px; border: 0; border-radius: 99px; background: none; color: var(--muted); font-size: 13px; font-weight: 600; cursor: pointer; transition: background .15s ease, color .15s ease; }
+.seg button .ic { width: 17px; height: 17px; }
+.seg button[aria-pressed="true"] { background: var(--text); color: var(--ink); }
+
+/* the touch pad: swipe anywhere to move, tap the centre (or an arrow) */
+main > .pad-wrap { flex: 1 1 auto; min-height: 190px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+.dpad {
+  position: relative; flex: 1 1 auto; min-height: 0; max-height: min(86vw, 330px); aspect-ratio: 1; border-radius: 50%; touch-action: none;
+  background: radial-gradient(circle at 50% 35%, #232a38, #12161f 70%); border: 1px solid var(--line);
+  box-shadow: inset 0 1px 0 #ffffff12, 0 20px 40px -20px #000;
+}
+.dpad button { position: absolute; display: grid; place-items: center; padding: 0; border: 0; background: none; color: var(--text-2); border-radius: 50%; pointer-events: none; }
+.dpad .ic { width: 30px; height: 30px; }
+.dpad [data-a="up"] { left: 35%; top: 4%; width: 30%; height: 24%; }
+.dpad [data-a="down"] { left: 35%; bottom: 4%; width: 30%; height: 24%; }
+.dpad [data-a="left"] { top: 35%; left: 4%; width: 24%; height: 30%; }
+.dpad [data-a="right"] { top: 35%; right: 4%; width: 24%; height: 30%; }
+.dpad [data-a="ok"] { left: 32%; top: 32%; width: 36%; height: 36%; background: #2a3242; border: 1px solid var(--line); font-weight: 700; font-size: 19px; color: var(--text); }
+.dpad .hl { color: #fff; background: #ffffff1f; }
+.dpad [data-a="ok"].hl { background: #3a4458; }
+.swipe-hint { flex: none; margin: 0; font-size: 11.5px; color: var(--muted); text-align: center; }
+
+/* mode souris : un trackpad à la place du pavé rond */
+.tpad {
+  position: relative; flex: 1 1 auto; align-self: stretch; min-height: 0; border-radius: 26px; touch-action: none; overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 0%, #232a38, #12161f 75%); border: 1px solid var(--line);
+  box-shadow: inset 0 1px 0 #ffffff12, 0 20px 40px -20px #000;
+}
+.tpad .ic { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; color: #ffffff1f; }
+.tpad .touch { position: absolute; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; background: #ffffff24; pointer-events: none; opacity: 0; transition: opacity .2s ease; }
+.tpad .touch.on { opacity: 1; transition: none; }
+.tpad.clicked { background: radial-gradient(120% 90% at 50% 0%, #2c3546, #161b26 75%); }
+
+/* touches façon télécommande Apple TV : 2 × 2 à gauche, le volume en bascule verticale à droite */
+.ctrl { display: grid; grid-template-columns: 1fr 1fr 74px; grid-template-rows: repeat(2, clamp(48px, 6.8dvh, 58px)); gap: 8px; }
+.key {
+  display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0;
+  padding: 0 6px; border: 1px solid var(--line); border-radius: 15px;
+  background: var(--key); font-size: 14px; font-weight: 600; color: var(--text-2); cursor: pointer;
+  transition: transform .08s ease, background .08s ease;
+}
+.key .ic { flex: none; color: var(--text); }
+.key b { font-size: 21px; line-height: 22px; color: var(--text); }
+.rocker {
+  grid-column: 3; grid-row: 1 / 3; display: flex; flex-direction: column; overflow: hidden;
+  border: 1px solid var(--line); border-radius: 37px; background: var(--key);
+}
+.rocker .key { flex: 1 1 0; border: 0; border-radius: 0; background: none; font-size: 28px; font-weight: 400; color: var(--text); }
+.rocker .key.down { background: var(--key-2) !important; transform: none; }
+.level {
+  flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; height: 38px; padding: 0;
+  font: inherit; font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+  border: 0; border-block: 1px solid var(--line); background: #ffffff08; cursor: pointer;
+}
+.level b { font-size: 15px; letter-spacing: 0; text-transform: none; color: var(--text); font-variant-numeric: tabular-nums; }
+.level.muted b { color: #ff8a80; }
+.level.down { background: var(--key-2); }
+.channels { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
+.chan {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
+  height: clamp(56px, 8dvh, 68px); padding: 0 4px; border: 1px solid var(--line); border-radius: 15px; background: var(--key); cursor: pointer;
+}
+.chan .logo { height: 22px; width: auto; max-width: 34px; }
+.chan span { max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 11.5px; font-weight: 600; color: var(--text-2); }
+.chan[aria-disabled="true"] { opacity: .4; }
+/* 6 chaînes ou plus : un peu plus serrées, pour que les noms tiennent */
+.channels:has(> .chan:nth-child(6)) { gap: 6px; }
+.channels:has(> .chan:nth-child(6)) .chan { padding: 0 2px; }
+.channels:has(> .chan:nth-child(6)) .chan span { font-size: 10.5px; letter-spacing: -.01em; }
+@media (max-width: 380px) { .channels:has(> .chan:nth-child(6)) .chan span { font-size: 9.6px; } }
+.down { background: var(--key-2) !important; transform: scale(.95); }
+
+.toast {
+  position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); width: max-content; max-width: calc(100% - 32px);
+  padding: 10px 16px; border-radius: 99px; background: var(--raised); border: 1px solid var(--line);
+  font-size: 13.5px; font-weight: 600; transform: translate(-50%, 16px); opacity: 0; transition: .25s ease; pointer-events: none;
+}
+.toast.on { transform: translate(-50%, 0); opacity: 1; }
+
+/* very short screens (landscape, small phones): the page scrolls instead of squeezing */
+@media (max-height: 560px) { main { height: auto; min-height: 100dvh; } main > .pad-wrap { flex: none; height: 250px; } }
+@media (max-width: 350px) { .key { font-size: 12.5px; gap: 6px; } .ctrl { grid-template-columns: 1fr 1fr 64px; } }
+</style>
+
+<main>
+  <header>
+    <svg class="mark" viewBox="0 0 224 224" aria-hidden="true"><path fill="#FF5A1F" d="M224 57.8 H76 A18.2 18.2 0 0 0 76 94.2 H224 Z"/><path fill="#FF5A1F" d="M0 166.2 H148 A18.2 18.2 0 0 0 148 129.8 H0 Z"/><path fill="#FFFFFF" d="M58 0 H166 C201.96 0 224 22.04 224 58 V59 H76 A17 17 0 0 0 76 93 H224 V166 C224 201.96 201.96 224 166 224 H58 C22.04 224 0 201.96 0 166 V165 H148 A17 17 0 0 0 148 131 H0 V58 C0 22.04 22.04 0 58 0 Z"/></svg>
+    <div class="htext"><svg class="word" viewBox="22.58 69.45 638.26 117.2" role="img" aria-label="scaros"><path fill="currentColor" d="M71.78 186.65C99.46 186.65 119.30 172.86 119.30 151.01C119.30 134.57 109.01 124.81 86.84 120.15L66.69 116.01C57.36 114.0 51.84 109.86 51.84 103.18C51.84 95.54 59.06 89.60 70.83 89.60C83.03 89.60 91.19 96.92 91.40 106.89H116.54C115.90 83.87 97.34 69.56 70.19 69.56C42.83 69.56 25.12 83.45 25.12 104.03C25.12 121.0 36.36 131.92 57.78 136.37L76.87 140.30C86.31 142.31 92.15 146.24 92.15 153.03C92.15 160.98 84.30 166.60 71.36 166.60C58.0 166.60 50.15 160.34 48.98 149.42H22.57C24.27 173.5 44.53 186.65 71.78 186.65Z M186.07 186.54C214.39 186.54 234.96 168.30 236.87 143.80H210.46C207.92 156.21 200.39 164.27 186.39 164.27C168.78 164.27 158.39 150.16 158.39 128.10C158.39 105.93 168.89 91.72 186.39 91.72C200.28 91.72 208.66 100.10 210.68 112.09H236.87C234.54 87.16 214.18 69.45 186.07 69.45C153.30 69.45 131.34 93.53 131.34 128.10C131.34 162.68 153.30 186.54 186.07 186.54Z M287.95 185.80C306.19 185.80 315.63 178.16 320.93 168.19H321.36V184.0H347.66V107.63C347.66 84.30 330.37 69.77 301.21 69.77C271.93 69.77 253.69 84.51 252.42 106.78H278.19C278.93 97.34 287.63 90.56 300.68 90.56C313.51 90.56 321.15 97.34 321.15 106.89V107.74C321.15 115.37 314.04 115.69 293.25 118.03C270.13 120.46 249.24 126.72 249.24 152.18C249.24 174.56 265.68 185.80 287.95 185.80ZM294.53 165.96C282.86 165.96 275.33 160.77 275.33 151.96C275.33 141.78 285.09 137.65 296.54 135.95C307.57 134.25 317.96 132.56 321.25 130.43V142.53C321.25 155.57 312.03 165.96 294.53 165.96Z M370.31 184.0H397.04V120.57C397.04 103.07 406.90 94.27 419.63 94.27C424.93 94.27 430.24 94.80 432.25 95.12V71.36C430.13 71.15 427.16 70.93 423.56 70.93C409.13 70.93 400.54 77.72 396.40 90.56H396.09V72.0H370.31Z M496.69 186.54C529.68 186.54 551.95 162.89 551.95 128.10C551.95 93.31 529.68 69.45 496.69 69.45C463.71 69.45 441.43 93.31 441.43 128.10C441.43 162.89 463.71 186.54 496.69 186.54ZM496.69 164.16C479.40 164.16 468.48 150.48 468.48 128.10C468.48 105.62 479.51 91.83 496.69 91.83C513.77 91.83 524.80 105.72 524.80 128.10C524.80 150.37 513.87 164.16 496.69 164.16Z M613.31 186.65C641.0 186.65 660.83 172.86 660.83 151.01C660.83 134.57 650.54 124.81 628.37 120.15L608.22 116.01C598.89 114.0 593.37 109.86 593.37 103.18C593.37 95.54 600.59 89.60 612.36 89.60C624.56 89.60 632.72 96.92 632.93 106.89H658.07C657.43 83.87 638.87 69.56 611.72 69.56C584.36 69.56 566.65 83.45 566.65 104.03C566.65 121.0 577.89 131.92 599.31 136.37L618.40 140.30C627.84 142.31 633.68 146.24 633.68 153.03C633.68 160.98 625.83 166.60 612.89 166.60C599.53 166.60 591.68 160.34 590.51 149.42H564.10C565.80 173.5 586.06 186.65 613.31 186.65Z"/></svg><span class="now">À l’écran : <b id="now-app">le menu</b></span></div>
+    <span class="conn" id="conn"><span class="dot"></span><span id="conn-text">Connexion…</span></span>
+  </header>
+
+  <div class="banner" id="install" hidden><p id="install-text"></p><button type="button" id="install-x" aria-label="Masquer">✕</button></div>
+  <p class="offline" id="offline" hidden>Connexion perdue. Vérifie que ton téléphone est sur le même Wi-Fi. Si le PC a changé d’adresse, rescanne le QR code (bouton ≡ puis Télécommande).</p>
+
+  <form class="type" id="type">
+    <input id="text" type="text" enterkeyhint="send" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Taper du texte…" aria-label="Texte à envoyer à l’écran">
+    <button type="submit" aria-label="Envoyer" data-icon="send"></button>
+  </form>
+
+  <div class="seg" role="group" aria-label="Mode du pavé">
+    <button type="button" data-mode="arrows" data-icon="arrows" aria-pressed="true">Flèches</button>
+    <button type="button" data-mode="mouse" data-icon="mouse" aria-pressed="false">Souris</button>
+  </div>
+
+  <div class="pad-wrap">
+    <div class="tpad" id="tpad" role="application" aria-label="Trackpad : glisse pour déplacer le curseur, touche pour cliquer" hidden><span data-icon="mouse"></span><span class="touch" id="touch"></span></div>
+    <div class="dpad" id="dpad" role="group" aria-label="Pavé : glisse pour te déplacer, touche le centre pour valider">
+      <button type="button" data-a="up" aria-label="Haut" data-icon="up"></button>
+      <button type="button" data-a="left" aria-label="Gauche" data-icon="left"></button>
+      <button type="button" data-a="ok" aria-label="Valider">OK</button>
+      <button type="button" data-a="right" aria-label="Droite" data-icon="right"></button>
+      <button type="button" data-a="down" aria-label="Bas" data-icon="down"></button>
+    </div>
+    <p class="swipe-hint" id="hint">Glisse pour te déplacer · touche OK pour valider</p>
+  </div>
+
+  <div class="ctrl">
+    <button type="button" class="key" data-a="back" data-icon="back">Retour</button>
+    <button type="button" class="key" data-a="home" data-icon="home">Accueil</button>
+    <button type="button" class="key" data-a="playpause" data-icon="playpause">Lecture</button>
+    <button type="button" class="key" data-a="menu" aria-label="Centre de contrôle"><b>≡</b>Menu</button>
+    <div class="rocker" role="group" aria-label="Volume">
+      <button type="button" class="key" data-a="volup" data-repeat aria-label="Monter le volume">+</button>
+      <button type="button" class="level" id="level" data-a="mute" aria-label="Couper ou remettre le son">Vol<b id="vol-num">–</b></button>
+      <button type="button" class="key" data-a="voldown" data-repeat aria-label="Baisser le volume">−</button>
+    </div>
+  </div>
+
+  <div class="channels" id="channels"></div>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const I = {
+    up: '<path d="M6 15l6-6 6 6"/>', down: '<path d="M6 9l6 6 6-6"/>',
+    left: '<path d="M15 6l-6 6 6 6"/>', right: '<path d="M9 6l6 6-6 6"/>',
+    back: '<path d="M10 6l-6 6 6 6M4 12h16"/>', home: '<path d="M4 11l8-7 8 7M6.5 9.5V20h11V9.5"/>',
+    playpause: '<path d="M5 5.5v13l8-6.5z"/><path d="M16 6v12M20 6v12"/>',
+    send: '<path d="M4 12l16-7-6 16-3-7z"/>',
+    arrows: '<path d="M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/>',
+    mouse: '<rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 7v3.5"/>'
+  };
+  const icon = n => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n]}</svg>`;
+  document.querySelectorAll('[data-icon]').forEach(el => { el.innerHTML = icon(el.dataset.icon) + el.innerHTML; });
+
+  const LOGOS = {
+    youtube: '<svg class="logo" viewBox="0 0 28 20" style="aspect-ratio:28/20" aria-hidden="true"><rect width="28" height="20" rx="5.6" fill="#ff0033"/><path d="M11.2 5.6v8.8l7.6-4.4z" fill="#fff"/></svg>',
+    jellyfin: '<svg class="logo" viewBox="20 18 483 483" style="aspect-ratio:1" aria-hidden="true"><defs><linearGradient id="jf" x1="110.25" y1="213.3" x2="496.14" y2="436.09" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#aa5cc3"/><stop offset="1" stop-color="#00a4dc"/></linearGradient></defs><path fill="url(#jf)" d="M261.42 201.62c-20.44 0-86.24 119.29-76.2 139.43s142.48 19.92 152.4 0S281.86 201.63 261.42 201.62z"/><path fill="url(#jf)" d="M261.42 23.3C199.83 23.3 1.57 382.73 31.8 443.43s429.34 60 459.24 0S323 23.3 261.42 23.3zM411.9 390.76c-19.59 39.33-281.08 39.77-300.9 0S221.1 115.48 261.45 115.48 431.49 351.42 411.9 390.76z"/></svg>',
+    plex: '<svg class="logo" viewBox="0 0 24 24" style="aspect-ratio:1" aria-hidden="true"><rect width="24" height="24" rx="5.5" fill="#1f1f1f"/><path d="M6.6 3.8h5.4l6 8.2-6 8.2H6.6l6-8.2z" fill="#ebaf00"/></svg>',
+    twitch: '<svg class="logo" viewBox="0 0 24 24" style="aspect-ratio:1" aria-hidden="true"><rect width="24" height="24" rx="5.5" fill="#9146ff"/><g transform="translate(4.2 4.2) scale(.65)"><path d="M6.857 1.714h13.714v9.429l-3.428 3.428h-3.429l-3 3v-3H6.857z" fill="#fff"/><path fill="#9146ff" d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714z"/></g></svg>',
+    steamlink: '<svg class="logo" viewBox="0 0 24 24" style="aspect-ratio:1" aria-hidden="true"><rect width="24" height="24" rx="5.5" fill="#1b2838"/><circle cx="15" cy="9" r="3.7" fill="none" stroke="#fff" stroke-width="1.7"/><circle cx="15" cy="9" r="1.6" fill="#66c0f4"/><path d="M8.3 15.5l5-4.3" stroke="#fff" stroke-width="2.3" stroke-linecap="round"/><circle cx="8.1" cy="15.7" r="2.3" fill="#fff"/></svg>'
+  };
+
+  let apps = { youtube: { name: 'YouTube' }, jellyfin: { name: 'Jellyfin' }, plex: { name: 'Plex' }, steamlink: { name: 'Steam Link' }, twitch: { name: 'Twitch' } };
+  const SHORT = { steamlink: 'Steam' };  // 5 chaînes sur une ligne : noms courts
+  let current = null, shown = false, volume = null, muted = false, airplay = null;
+
+  let toastTimer;
+  function toast(text) {
+    const t = $('#toast');
+    t.textContent = text; t.classList.add('on');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('on'), 2400);
+  }
+
+  // Connexion : un seul flux d'événements, fermé quand la page passe en arrière-plan
+  // (téléphone verrouillé, autre appli) et rouvert au retour. Sinon le navigateur garde des
+  // connexions fantômes et finit par bloquer les boutons.
+  function setOnline(on) {
+    $('#conn').classList.toggle('online', on);
+    $('#conn-text').textContent = on ? 'Connecté' : 'Hors ligne';
+    $('#offline').hidden = on;
+  }
+  function post(path, body, quiet) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 4000);
+    return fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}), cache: 'no-store', signal: ctl.signal })
+      .then(r => { if (!r.ok) throw new Error(r.status); setOnline(true); return r.json(); })
+      .catch(e => {
+        setOnline(false);
+        if (!quiet) toast('Scaros ne répond pas.');
+        openStream();
+        throw e;
+      })
+      .finally(() => clearTimeout(timer));
+  }
+  function send(action) {
+    if (navigator.vibrate) navigator.vibrate(10);
+    if (!es) { retry = 0; openStream(); }  // la connexion s'était coupée : on la rouvre tout de suite
+    post('/api/input', { action }).catch(() => {});
+  }
+
+  let es = null, retry = 0, retryTimer = null;
+  const visible = () => document.visibilityState === 'visible';
+  function openStream() {
+    if (es || !visible()) return;
+    clearTimeout(retryTimer);
+    es = new EventSource('/api/events');
+    es.onopen = () => { retry = 0; setOnline(true); refresh(); };
+    es.onerror = () => {
+      closeStream();
+      setOnline(false);
+      // vite au début (le Wi-Fi du téléphone se réveille en une seconde ou deux), puis plus calmement
+      retryTimer = setTimeout(openStream, retry < 8 ? Math.min(1500, 300 * 2 ** retry++) : (retry++, 5000));
+    };
+    es.onmessage = e => {
+      let m; try { m = JSON.parse(e.data); } catch (err) { return; }
+      if (m.type === 'app') {
+        if (m.state === 'running') { current = m.id; shown = false; }
+        else if (m.state === 'shown') { if (current === m.id) shown = true; }
+        else if (current === m.id) current = null;
+        renderNow();
+        if (m.state === 'missing') toast(`${(apps[m.id] || {}).name || m.id} n’est pas installé.`);
+        else if (m.state === 'failed') toast(`${(apps[m.id] || {}).name || m.id} n’a pas pu démarrer.`);
+        else if (m.state === 'offline') toast(`${(apps[m.id] || {}).name || m.id} ne répond pas.`);
+      }
+      else if (m.type === 'home') { current = null; renderNow(); }
+      else if (m.type === 'volume') { muted = !!m.muted; renderVol(m.level); }
+      else if (m.type === 'airplay') { airplay = m.state === 'mirroring' ? (m.device || 'iPhone') : null; renderNow(); }
+      else if (m.type === 'mouse') { if (!!m.on !== mouseMode) setMode(!!m.on); }
+    };
+  }
+  function closeStream() {
+    if (es) { es.close(); es = null; }
+  }
+  function refresh() {
+    // état léger : la réponse arrive tout de suite, même pendant une recherche Wi-Fi ou Bluetooth
+    fetch('/api/state?lite=1', { cache: 'no-store' }).then(r => r.json()).then(s => {
+      if (s.remoteBuild && BUILD && !BUILD.startsWith('__') && s.remoteBuild !== BUILD) return newVersion();
+      apps = s.apps; current = s.app; shown = !!s.shown; muted = !!s.muted;
+      airplay = s.airplay && s.airplay.state === 'mirroring' ? (s.airplay.device || 'iPhone') : null;
+      renderChannels(); renderNow(); renderVol(s.volume); setOnline(true);
+      if (!!s.mouse !== mouseMode) setMode(!!s.mouse);
+    }).catch(() => setOnline(false));
+  }
+  // la page vient du cache du téléphone (ouverture instantanée) : après une mise à jour de Scaros,
+  // on télécharge la nouvelle et on recharge, une seule fois
+  const BUILD = (document.querySelector('meta[name="scaros-build"]') || {}).content || '';
+  function newVersion() {
+    let tried = '';
+    try { tried = sessionStorage.getItem('scaros-reload') || ''; } catch (e) {}
+    if (tried === BUILD) return;
+    try { sessionStorage.setItem('scaros-reload', BUILD); } catch (e) {}
+    fetch('/remote', { cache: 'reload' }).catch(() => {}).finally(() => location.reload());
+  }
+  function wakeUp() {
+    if (!visible()) return;
+    retry = 0;
+    openStream();
+    post('/api/hello', {}, true).catch(() => {});
+  }
+  document.addEventListener('visibilitychange', () => { if (visible()) { wakeUp(); mouseSock(); } else { closeStream(); closeSock(); } });
+  addEventListener('pagehide', closeStream);
+  addEventListener('pageshow', wakeUp);
+  addEventListener('online', wakeUp);
+  setInterval(() => { if (visible()) post('/api/hello', {}, true).catch(() => {}); }, 15000);
+
+  function renderChannels() {
+    $('#channels').innerHTML = Object.entries(apps).map(([id, a], i) =>
+      `<button type="button" class="chan" data-a="ch${i + 1}" aria-disabled="${a.installed === false}" aria-label="${a.name}">${LOGOS[id] || ''}<span>${SHORT[id] || a.name}</span></button>`).join('');
+  }
+  function renderNow() {
+    const name = current ? (apps[current] || {}).name || current : null;
+    $('#now-app').textContent = airplay ? `recopie de ${airplay}` : !name ? 'le menu' : shown ? name : `ouverture de ${name}…`;
+  }
+  function renderVol(level) {
+    if (level != null) volume = level;
+    if (volume == null) return;
+    $('#vol-num').textContent = muted ? 'muet' : volume;
+    $('#level').classList.toggle('muted', muted);
+    $('#level').setAttribute('aria-label', muted ? 'Son coupé : touche pour le remettre' : `Volume ${volume} % : touche pour couper le son`);
+  }
+
+  // pavé tactile : glisser = flèches (un glissé long en fait plusieurs), toucher = la zone touchée
+  const pad = $('#dpad');
+  // un glissé = un déplacement ; il faut glisser plus loin pour en enchaîner d'autres
+  const FIRST_STEP = 28, NEXT_STEP = 110;
+  let g = null;
+  function zoneAt(x, y) {
+    const r = pad.getBoundingClientRect();
+    const dx = x - (r.left + r.width / 2), dy = y - (r.top + r.height / 2);
+    if (Math.hypot(dx, dy) < r.width * 0.2) return 'ok';
+    return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+  }
+  const clearHl = () => pad.querySelectorAll('.hl').forEach(b => b.classList.remove('hl'));
+  function flash(a) {
+    const b = pad.querySelector(`[data-a="${a}"]`);
+    if (!b) return;
+    b.classList.add('hl'); setTimeout(() => b.classList.remove('hl'), 140);
+  }
+  // fin d'un appui : aussi quand le téléphone passe en arrière-plan en plein appui (appel,
+  // notification), sinon la répétition continuerait à envoyer des flèches jusqu'au retour
+  function endGesture() {
+    if (!g) return;
+    clearTimeout(g.hold); clearInterval(g.rep); clearHl();
+    g = null;
+  }
+  const holds = new Set();  // boutons maintenus (volume) : arrêtés au passage en arrière-plan
+  document.addEventListener('visibilitychange', () => { if (!visible()) { endGesture(); endTouch(); holds.forEach(stop => stop()); } });
+  pad.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    endGesture();
+    pad.setPointerCapture(e.pointerId);
+    const zone = zoneAt(e.clientX, e.clientY);
+    g = { x: e.clientX, y: e.clientY, moved: false, steps: 0, zone, hold: null, rep: null };
+    const b = pad.querySelector(`[data-a="${zone}"]`);
+    if (b) b.classList.add('hl');
+    // rester appuyé sur une flèche : ça défile
+    if (zone !== 'ok') g.hold = setTimeout(() => { g.moved = true; send(zone); g.rep = setInterval(() => send(zone), 140); }, 450);
+  });
+  pad.addEventListener('pointermove', e => {
+    if (!g) return;
+    const dx = e.clientX - g.x, dy = e.clientY - g.y;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < (g.steps ? NEXT_STEP : FIRST_STEP)) return;
+    clearTimeout(g.hold); clearInterval(g.rep); clearHl();
+    const a = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+    g.moved = true; g.steps++; g.x = e.clientX; g.y = e.clientY;
+    send(a); flash(a);
+  });
+  pad.addEventListener('pointerup', () => {
+    if (!g) return;
+    clearTimeout(g.hold); clearInterval(g.rep);
+    if (!g.moved) send(g.zone);
+    clearHl();
+    g = null;
+  });
+  pad.addEventListener('pointercancel', endGesture);
+
+  // ---------- mode souris : le pavé devient un trackpad ----------
+  // Un doigt déplace le curseur (plus vite quand on glisse vite), une touche = clic, un appui
+  // long ou une touche à deux doigts = clic droit, deux doigts = défiler (avec élan). Les gestes
+  // partent par une connexion WebSocket gardée ouverte, sans attendre de réponse.
+  const tpad = $('#tpad'), dot = $('#touch');
+  let mouseMode = false;
+  function setMode(on, tell) {
+    mouseMode = !!on;
+    document.querySelectorAll('.seg button').forEach(b => b.setAttribute('aria-pressed', String((b.dataset.mode === 'mouse') === mouseMode)));
+    tpad.hidden = !mouseMode;
+    pad.hidden = mouseMode;
+    $('#hint').textContent = mouseMode ? 'Touche pour cliquer · 2 doigts pour défiler · appui long : clic droit'
+      : 'Glisse pour te déplacer · touche OK pour valider';
+    endGesture(); endTouch();
+    if (mouseMode) mouseSock(); else closeSock();
+    if (tell) post('/api/mouse', { on: mouseMode }).catch(() => {});
+  }
+  document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => {
+    const on = b.dataset.mode === 'mouse';
+    if (on === mouseMode) return;
+    if (navigator.vibrate) navigator.vibrate(10);
+    setMode(on, true);
+  }));
+
+  let sock = null, sockRetry = null, sockFails = 0, backlog = [], posting = false;
+  function mouseSock() {
+    if (sock || !mouseMode || !visible()) return;
+    clearTimeout(sockRetry);
+    let ws;
+    try { ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/mouse`); } catch (e) { sockFails++; return; }
+    let opened = false;
+    sock = ws;
+    ws.onopen = () => {
+      opened = true; sockFails = 0;
+      if (backlog.length) ws.send(backlog.splice(0).join('\n'));
+    };
+    ws.onclose = () => {
+      if (sock !== ws) return;
+      sock = null;
+      if (!opened) sockFails++;
+      if (backlog.length) flushPost();
+      if (mouseMode && visible()) sockRetry = setTimeout(mouseSock, sockFails > 3 ? 5000 : 800);
+    };
+  }
+  function closeSock() {
+    clearTimeout(sockRetry);
+    if (sock) { const ws = sock; sock = null; ws.close(); }
+  }
+  setInterval(() => { if (sock && sock.readyState === 1) sock.send('k'); }, 20000);
+  function mouseSend(line) {
+    if (sock && sock.readyState === 1) { sock.send(line); return; }
+    backlog.push(line);
+    if (backlog.length > 90) backlog.splice(0, backlog.length - 90);
+    if (!sock) mouseSock();
+    // WebSocket qui ne passe pas (réseau, proxy) : les gestes partent par requêtes groupées
+    if (!sock || sockFails >= 2) flushPost();
+  }
+  function flushPost() {
+    if (posting || !backlog.length) return;
+    posting = true;
+    post('/api/mouse', { events: backlog.splice(0) }, true).catch(() => {}).finally(() => { posting = false; if (backlog.length && !(sock && sock.readyState === 1)) flushPost(); });
+  }
+
+  // mouvements regroupés à chaque image (60 par seconde au plus)
+  let mx = 0, my = 0, sx = 0, sy = 0, frame = 0;
+  const schedule = () => { if (!frame) frame = requestAnimationFrame(flushMoves); };
+  function flushMoves() {
+    if (frame) cancelAnimationFrame(frame);
+    frame = 0;
+    const ix = Math.trunc(mx), iy = Math.trunc(my), jx = Math.trunc(sx), jy = Math.trunc(sy);
+    mx -= ix; my -= iy; sx -= jx; sy -= jy;
+    if (ix || iy) mouseSend(`m ${ix} ${iy}`);
+    if (jx || jy) mouseSend(`s ${jx} ${jy}`);
+  }
+  function click(btn) {
+    flushMoves();
+    mouseSend(`c ${btn}`);
+    if (navigator.vibrate) navigator.vibrate(btn === 'right' ? [10, 40, 10] : 8);
+    tpad.classList.add('clicked');
+    setTimeout(() => tpad.classList.remove('clicked'), 140);
+  }
+
+  const touches = new Map();   // doigts posés : id -> dernière position
+  let tg = null, glide = 0;    // geste en cours ; élan du défilement
+  function showDot(e) {
+    const r = tpad.getBoundingClientRect();
+    dot.style.left = (e.clientX - r.left) + 'px'; dot.style.top = (e.clientY - r.top) + 'px';
+    dot.classList.add('on');
+  }
+  function endTouch() {
+    touches.clear();
+    if (tg) clearTimeout(tg.hold);
+    tg = null;
+    cancelAnimationFrame(glide); glide = 0;
+    dot.classList.remove('on');
+  }
+  tpad.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    try { tpad.setPointerCapture(e.pointerId); } catch (err) {}
+    cancelAnimationFrame(glide); glide = 0;
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const now = performance.now();
+    if (!tg) tg = { start: now, t: now, moved: 0, fingers: 0, hold: null, done: false, sx: 0, sy: 0, trail: [] };
+    tg.fingers = Math.max(tg.fingers, touches.size);
+    clearTimeout(tg.hold);
+    // appui long sans bouger : clic droit
+    if (touches.size === 1) tg.hold = setTimeout(() => { if (tg && tg.moved < 10 && touches.size === 1) { tg.done = true; click('right'); } }, 550);
+    if (touches.size === 1) showDot(e);
+  });
+  tpad.addEventListener('pointermove', e => {
+    const p = touches.get(e.pointerId);
+    if (!p || !tg) return;
+    const dx = e.clientX - p.x, dy = e.clientY - p.y;
+    p.x = e.clientX; p.y = e.clientY;
+    const now = performance.now(), dt = Math.max(4, now - tg.t);
+    tg.t = now;
+    tg.moved += Math.hypot(dx, dy);
+    if (tg.moved > 10) clearTimeout(tg.hold);
+    if (touches.size >= 2) {
+      // deux doigts : la page suit les doigts, comme sur l'iPhone (chaque doigt compte pour sa part)
+      const k = 3 / touches.size;
+      sx -= dx * k; sy -= dy * k;
+      // vitesse pour l'élan : mesurée sur les 100 dernières ms (les deux doigts bougent ensemble)
+      tg.sx -= dx * k; tg.sy -= dy * k;
+      tg.trail.push([now, tg.sx, tg.sy]);
+      while (tg.trail.length > 2 && now - tg.trail[0][0] > 100) tg.trail.shift();
+      schedule();
+    } else if (tg.fingers === 1 && !tg.done) {
+      const v = Math.hypot(dx, dy) / dt;  // vitesse du doigt, en px par ms
+      const gain = 1.2 + 2.4 * Math.min(1, Math.max(0, (v - 0.12) / 1.1));
+      mx += dx * gain; my += dy * gain;
+      schedule();
+    }
+    if (touches.keys().next().value === e.pointerId) showDot(e);
+  });
+  function touchEnd(e) {
+    if (!touches.delete(e.pointerId) || touches.size || !tg) return;
+    const g = tg;
+    clearTimeout(g.hold);
+    tg = null;
+    dot.classList.remove('on');
+    if (g.done) return;
+    if (performance.now() - g.start < 300 && g.moved < 12) { click(g.fingers >= 2 ? 'right' : 'left'); return; }
+    // défilement lancé : il continue un peu et ralentit
+    const first = g.trail[0], end = g.trail[g.trail.length - 1];
+    const span = first && end ? end[0] - first[0] : 0;
+    if (g.fingers >= 2 && span > 20 && performance.now() - g.t < 80) {
+      let vx = (end[1] - first[1]) / span, vy = (end[2] - first[2]) / span, last = performance.now();
+      if (Math.hypot(vx, vy) < 0.4) return;
+      const step = t => {
+        const d = Math.min(40, t - last); last = t;
+        sx += vx * d; sy += vy * d;
+        flushMoves();
+        vx *= Math.pow(0.92, d / 16); vy *= Math.pow(0.92, d / 16);
+        glide = Math.hypot(vx, vy) > 0.05 ? requestAnimationFrame(step) : 0;
+      };
+      glide = requestAnimationFrame(step);
+    }
+  }
+  tpad.addEventListener('pointerup', touchEnd);
+  tpad.addEventListener('pointercancel', e => { touches.delete(e.pointerId); if (!touches.size) endTouch(); });
+
+  // autres touches : réaction immédiate, répétition si on reste appuyé (volume)
+  document.addEventListener('pointerdown', e => {
+    const b = e.target.closest('[data-a]');
+    if (!b || b.closest('form') || b.closest('#dpad')) return;
+    e.preventDefault();
+    const a = b.dataset.a;
+    b.classList.add('down');
+    send(a);
+    let t2;
+    const t1 = b.hasAttribute('data-repeat') ? setTimeout(() => { t2 = setInterval(() => send(a), 140); }, 420) : null;
+    const stop = () => {
+      clearTimeout(t1); clearInterval(t2); b.classList.remove('down'); holds.delete(stop);
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => b.removeEventListener(ev, stop));
+    };
+    holds.add(stop);
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => b.addEventListener(ev, stop));
+  });
+  document.addEventListener('keydown', e => {
+    const b = e.target.closest && e.target.closest('[data-a]');
+    if (b && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); send(b.dataset.a); }
+  });
+
+  $('#type').addEventListener('submit', e => {
+    e.preventDefault();
+    const input = $('#text'), text = input.value.trim();
+    if (!text) return;
+    post('/api/text', { text }).then(() => { input.value = ''; input.blur(); toast('Envoyé à l’écran'); }).catch(() => {});
+  });
+
+  // installer sur l'écran d'accueil (Safari : Partager › Sur l'écran d'accueil)
+  const standalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+  const ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  let dismissed = false;
+  try { dismissed = localStorage.getItem('scaros-install-hint') === 'off'; } catch (e) {}
+  if (!standalone && !dismissed && matchMedia('(pointer: coarse)').matches) {
+    $('#install-text').textContent = ios
+      ? 'Garde la télécommande sur ton iPhone : touche Partager, puis « Sur l’écran d’accueil ».'
+      : 'Garde la télécommande sur ton téléphone : menu du navigateur, puis « Ajouter à l’écran d’accueil ».';
+    $('#install').hidden = false;
+    // ouverte par son adresse IP ? si scaros.local répond, mieux vaut l'installer depuis ce nom, qui ne change pas
+    if (/^\d+\.\d+\.\d+\.\d+$/.test(location.hostname)) {
+      const ctl = new AbortController();
+      setTimeout(() => ctl.abort(), 2500);
+      fetch(`http://scaros.local:${location.port || 80}/api/ping`, { signal: ctl.signal, cache: 'no-store' })
+        .then(r => r.json()).then(() => {
+          const p = $('#install-text');
+          const a = document.createElement('a');
+          a.href = `http://scaros.local:${location.port || 80}/remote`;
+          a.textContent = 'scaros.local';
+          p.append(' Avant, ouvre plutôt ', a, ' : l’appli marchera même si l’adresse du PC change.');
+        }).catch(() => {});
+    }
+  }
+  $('#install-x').addEventListener('click', () => {
+    $('#install').hidden = true;
+    try { localStorage.setItem('scaros-install-hint', 'off'); } catch (e) {}
+  });
+
+  renderChannels();
+  refresh();
+  openStream();
+})();
+</script>
+</html>

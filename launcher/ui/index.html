@@ -1,0 +1,2927 @@
+<!doctype html>
+<html lang="fr">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Scaros OS</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<!-- fonts:local -->
+<style>
+@font-face { font-family: "Figtree"; src: url("fonts/figtree.woff2") format("woff2"); font-weight: 400 700; font-display: swap; }
+</style>
+<!-- /fonts:local -->
+<style>
+/* Layout: 10-foot home screen — a cinematic "shelf" for the focused app fills the top,
+   a single row of label-less app icons sits under it; Réglages open full screen,
+   the control center slides in from the right. */
+:root {
+  --ink: #05070b;
+  --ink-2: #0d1118;
+  --glass: #ffffff12;
+  --glass-2: #ffffff1f;
+  --line: #ffffff1c;
+  --text: #f3f5f9;
+  --text-2: #c6cbd5;
+  --muted: #8a91a0;
+  --focus-bg: #f3f5f9;
+  --focus-fg: #0b0d12;
+  --focus-muted: #4c5260;
+  --sheet: #161b24f2;          /* panneaux flottants : centre de contrôle, notifications, volume */
+  --ring: #ffffffe0;           /* contour de l'icône choisie */
+  --shadow: #000;
+  --scrim: .62;
+  --field: #00000055;
+  --shade: #05070bcc;          /* voile à gauche du grand visuel, sous le texte */
+  --led: #ff5a1f;              /* ambre du logo */
+  --pad-a: #6cc04a;
+  --pad-b: #e5484d;
+  --font: "Figtree", "Segoe UI", system-ui, sans-serif;
+  --u: min(1vw, 1.7778vh);
+  --fs: 1;
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --spring: cubic-bezier(.3, 1.3, .45, 1);
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+html { font-size: var(--u); background: #000; }
+html[data-text="large"] { --fs: 1.12; }
+html[data-text="xlarge"] { --fs: 1.25; }
+/* Apparence claire (Réglages › Affichage). data-look plutôt que data-theme : ce nom-là peut
+   être posé par la page qui affiche la maquette. */
+html[data-look="light"] {
+  --ink: #eceef3;
+  --ink-2: #f3f4f7;
+  --glass: #0b0d120f;
+  --glass-2: #0b0d121a;
+  --line: #0b0d121f;
+  --text: #0b0d12;
+  --text-2: #353b47;
+  --muted: #646b79;
+  --focus-bg: #15181f;
+  --focus-fg: #ffffff;
+  --focus-muted: #b4bac6;
+  --sheet: #fbfbfdf2;
+  --ring: #15181fe6;
+  --shadow: #1a1f2b66;
+  --scrim: .3;
+  --field: #ffffffc0;
+  --shade: #eceef3d9;
+  color-scheme: light;
+}
+html[data-look="light"] .scene {
+  background:
+    radial-gradient(60% 85% at 76% 38%, color-mix(in oklab, var(--a) 34%, transparent), transparent 70%),
+    radial-gradient(55% 70% at 8% 108%, color-mix(in oklab, var(--a) 18%, transparent), transparent 72%),
+    linear-gradient(180deg, color-mix(in oklab, var(--a) 12%, var(--ink)) 0%, var(--ink) 100%);
+}
+html[data-look="light"] .scene-art svg { filter: drop-shadow(0 2.4rem 3.4rem color-mix(in oklab, var(--a) 35%, transparent)); }
+/* écran de veille, extinction et téléphone de démo restent sombres */
+.off, .phone { --text: #f3f5f9; --text-2: #c6cbd5; --muted: #8a91a0; --line: #ffffff1c; --glass: #ffffff12; --glass-2: #ffffff1f; }
+.phone { color: var(--text); }
+body, .stage, .pane, .pane.side, .toast, .vol { transition: background-color .45s ease, color .45s ease; }
+body {
+  margin: 0; background: var(--ink); color: var(--text);
+  font-family: var(--font); font-size: calc(1.65rem * var(--fs)); line-height: 1.4;
+  overflow: hidden; -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent;
+}
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; }
+.ic { display: block; width: 1.4rem; height: 1.4rem; flex: none; }
+
+/* ---------- accueil (façon tvOS) ----------
+   Un décor plein écran (paysage qui suit la météo et l'heure, ou les couleurs de l'appli),
+   le nom de l'appli choisie en grand en haut à gauche, l'heure et la météo dans une pastille
+   en haut à droite, et les applis dans un dock translucide. */
+.tv { position: relative; height: 100%; overflow: hidden; background: #000; }
+.stage { position: relative; height: 100%; background: var(--ink); transition: opacity .6s ease, filter .6s ease; }
+.stage.off-anim { opacity: 0; filter: brightness(.3); }
+/* sur le décor (une « photo »), le texte reste blanc, même en apparence claire */
+.stage[data-bg="decor"] { --text: #ffffff; --text-2: #eef1f6; --muted: #dde2ea; --line: #ffffff2e; --glass: #ffffff1f; color: var(--text); }
+.stage[data-bg="decor"] .status, .stage[data-bg="decor"] .shelf-info, .stage[data-bg="decor"] .foot { text-shadow: 0 .15rem 1.4rem #00000059; }
+
+/* décor : ciel, soleil ou lune, montagnes, lac, prairie */
+.decor { position: absolute; inset: 0; display: none; overflow: hidden;
+  --sky-a: #2c6cc0; --sky-b: #a7d0f2; --far: #8fa9c6; --mid: #5b7896; --near: #2d4a3e; --lake: #79acdf; --tree: #1f362d; --cap: .85;
+  --orb: #fff6d8; --orb-glow: #ffd77a99; --orb-x: 74%; --orb-y: 24%; --orb-size: 7rem; }
+.stage[data-bg="decor"] .decor { display: block; }
+.decor-sky { position: absolute; inset: 0; background: linear-gradient(180deg, var(--sky-a) 0%, var(--sky-b) 68%); transition: opacity 1s ease; }
+.decor-orb { position: absolute; left: var(--orb-x); top: var(--orb-y); width: var(--orb-size); height: var(--orb-size); border-radius: 50%;
+  transform: translate(-50%, -50%); background: radial-gradient(circle at 42% 38%, #ffffff 0 18%, var(--orb) 62%); box-shadow: 0 0 4rem 1.4rem var(--orb-glow), 0 0 14rem 6rem color-mix(in oklab, var(--orb-glow) 45%, transparent);
+  transition: top 1.2s var(--ease), background 1s ease, opacity 1s ease; }
+.decor[data-orb="none"] .decor-orb { opacity: 0; }
+.decor[data-orb="moon"] .decor-orb { --orb-size: 5rem;
+  background: radial-gradient(circle at 62% 64%, #00000014 0 9%, transparent 10%), radial-gradient(circle at 38% 42%, #0000000f 0 13%, transparent 14%),
+    radial-gradient(circle at 40% 36%, #ffffff, var(--orb) 70%); }
+.decor-land { position: absolute; inset: 0; width: 100%; height: 100%; }
+.decor-land path, .decor-land rect { transition: fill 1.2s ease, opacity 1.2s ease; }
+
+/* mode « Couleurs des applis » : dégradé de l'appli choisie et son logo en grand */
+.shelf { position: absolute; inset: 0; overflow: hidden; display: none; }
+.stage[data-bg="apps"] .shelf { display: block; }
+.scene {
+  position: absolute; inset: 0; opacity: 0; transition: opacity .9s ease;
+  background:
+    radial-gradient(60% 75% at 76% 30%, color-mix(in oklab, var(--a) 46%, transparent), transparent 70%),
+    radial-gradient(55% 60% at 8% 100%, color-mix(in oklab, var(--b) 70%, transparent), transparent 72%),
+    linear-gradient(180deg, color-mix(in oklab, var(--b) 35%, var(--ink)) 0%, var(--ink) 100%);
+}
+.scene.on { opacity: 1; }
+.scene-art { position: absolute; right: 9rem; top: 8.5rem; width: 24rem; height: 17rem; display: grid; place-items: center; }
+.scene-art svg { width: 100%; height: 100%; filter: drop-shadow(0 2.4rem 4rem color-mix(in oklab, var(--a) 50%, transparent)); }
+.scene.on .scene-art { animation: float 9s ease-in-out infinite alternate; }
+@keyframes float { from { transform: translateY(-.6rem) rotate(-1.5deg); } to { transform: translateY(.6rem) rotate(1.5deg); } }
+
+/* voiles discrets : texte lisible en haut à gauche, dock posé sur le décor */
+.home-scrim { position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: radial-gradient(70% 55% at 0% 0%, #00000052, transparent 70%), linear-gradient(180deg, transparent 62%, #00000047 100%); }
+.stage[data-bright] .status, .stage[data-bright] .shelf-info, .stage[data-bright] .foot { text-shadow: 0 .1rem 1rem #00000085, 0 0 .3rem #00000040; }
+.stage[data-bright] .home-scrim { background: radial-gradient(75% 62% at 0% 0%, #0000007a, transparent 72%), radial-gradient(40% 30% at 100% 0%, #00000047, transparent 75%), linear-gradient(180deg, transparent 55%, #00000066 100%); }
+.stage[data-bg="apps"] .home-scrim { background: linear-gradient(90deg, var(--shade) 0%, transparent 55%); }
+
+.status {
+  position: absolute; top: 2.6rem; left: 0; right: 0; z-index: 2;
+  display: flex; align-items: flex-start; justify-content: space-between;
+  padding-left: max(16px, env(safe-area-inset-left, 0px), 6rem);
+  padding-right: max(16px, env(safe-area-inset-right, 0px), 5rem);
+}
+.brand { display: flex; align-items: center; gap: .9rem; margin-top: .5rem; opacity: .92; }
+.brand-logo { display: block; height: 3.2rem; width: auto; overflow: visible; }
+.status-right { display: flex; flex-direction: column; align-items: flex-end; gap: .7rem; }
+/* la pastille en haut à droite : heure, météo, appareils connectés */
+.capsule { display: flex; align-items: center; gap: 1.3rem; padding: .75rem 1.6rem; border-radius: 99px;
+  background: #10131a5c; border: 1px solid #ffffff24; color: #fff; text-shadow: none; }
+html[data-look="light"] .stage[data-bg="apps"] .capsule { background: #ffffffa8; border-color: #0b0d121a; color: var(--text); }
+.st { display: grid; place-items: center; transition: opacity .3s; }
+.st .ic { width: 1.9rem; height: 1.9rem; }
+.st.dim { opacity: .45; }
+.clock { font-size: calc(2.2rem * var(--fs)); font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.cap-sep { width: 1px; height: 2rem; background: currentColor; opacity: .25; }
+.capsule:not(.has-icons) .cap-sep { display: none; }
+.cap-icons { display: flex; align-items: center; gap: 1.1rem; }
+.cap-icons:empty { display: none; }
+.wx-cap { margin: 0; padding: .35rem 1.1rem; border-radius: 99px; background: #10131a40; font-size: calc(1.4rem * var(--fs)); font-weight: 600; color: #eef1f6; text-shadow: none; }
+.wx-cap:empty { display: none; }
+html[data-look="light"] .stage[data-bg="apps"] .wx-cap { background: #ffffff8c; color: var(--text-2); }
+
+.shelf-info {
+  position: absolute; z-index: 2; top: 8rem; max-width: 58rem;
+  left: max(16px, env(safe-area-inset-left, 0px), 6rem);
+}
+.shelf-info.in { animation: infoIn .5s var(--ease); }
+@keyframes infoIn { from { opacity: 0; transform: translateY(.6rem); } }
+.kicker { margin: 0; font-size: calc(1.4rem * min(var(--fs), 1.1)); font-weight: 700; letter-spacing: .22em; text-transform: uppercase; color: var(--text-2); }
+/* le grand titre grossit peu avec la taille du texte : il laisse la place aux deux rangées de tuiles */
+.shelf-title { margin: .4rem 0 0; font-size: calc(5.6rem * min(var(--fs), 1.08)); font-weight: 800; line-height: 1; letter-spacing: -.045em; }
+.shelf-desc { margin: .9rem 0 0; max-width: 46rem; font-size: calc(1.85rem * min(var(--fs), 1.12)); font-weight: 500; line-height: 1.35; color: var(--text-2); text-wrap: balance; }
+.chips { display: flex; flex-wrap: wrap; gap: .6rem; margin: 1rem 0 0; padding: 0; list-style: none; }
+.chips li { padding: .4rem 1.1rem; font-size: calc(1.35rem * min(var(--fs), 1.1)); font-weight: 600; color: var(--text-2); background: var(--glass); border: 1px solid var(--line); border-radius: 99px; text-shadow: none; }
+.chips li.warn { color: #0b0d12; background: #f3f5f9; border-color: transparent; }
+
+/* dock : une barre translucide, comme sur l'Apple TV, avec les tuiles sur deux rangées de 4 */
+.dock {
+  position: absolute; z-index: 2; bottom: 6rem; left: 0; right: 0;
+  padding-left: max(16px, env(safe-area-inset-left, 0px), 4rem);
+  padding-right: max(16px, env(safe-area-inset-right, 0px), 4rem);
+}
+.dock-glass { width: fit-content; max-width: 100%; box-sizing: border-box; margin: 0 auto; padding: 1.6rem 2.1rem; border-radius: 3.2rem; background: #12151c61; border: 1px solid #ffffff1f; box-shadow: 0 2rem 4rem -2rem #0000008c; }
+html[data-look="light"] .dock-glass { background: #ffffff47; border-color: #ffffff80; }
+.stage[data-bg="apps"] .dock-glass { background: var(--glass); border-color: var(--line); box-shadow: none; }
+.icons { display: grid; grid-template-columns: repeat(var(--n, 4), 14rem); gap: 1.9rem 2rem; perspective: 60rem; }
+.icon { position: relative; min-width: 0; padding: 0; margin: 0; border: 0; background: none; cursor: pointer; }
+.icon:focus { outline: none; }
+.icon-art {
+  position: relative; display: grid; place-items: center; overflow: hidden;
+  aspect-ratio: 5 / 3; border-radius: 1.3rem; background: var(--bg);
+  box-shadow: 0 .8rem 1.6rem -1rem #00000099, inset 0 0 0 1px #ffffff14;
+  transition: transform .35s var(--spring), box-shadow .35s ease;
+}
+.icon-art svg { width: 46%; height: 52%; }
+.icon[data-id="youtube"] .icon-art svg { width: 40%; }
+.icon[data-id="twitch"] .icon-art svg { width: 40%; height: 48%; }
+.icon-art::after {
+  content: ""; position: absolute; inset: -40%; pointer-events: none;
+  background: linear-gradient(120deg, transparent 40%, #ffffff40 50%, transparent 60%);
+  transform: translateX(-60%); opacity: 0;
+}
+/* icône choisie : elle grandit et se soulève, sans cadre (comme tvOS) */
+.icon-art::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity .3s ease;
+  background: linear-gradient(180deg, #ffffff2e, transparent 55%); box-shadow: inset 0 0 0 .12rem #ffffff70; }
+.icon.is-focus .icon-art::before { opacity: 1; }
+.icon.is-focus .icon-art {
+  transform: translateY(-.9rem) scale(1.16);
+  box-shadow: 0 2.6rem 3.2rem -1.2rem #000000c0, 0 2.2rem 5rem -1.6rem color-mix(in oklab, var(--glow, #fff) 55%, transparent);
+  animation: tilt 5s ease-in-out .4s infinite alternate;
+}
+.icon.is-focus .icon-art::after { animation: shine 1.1s ease .1s 1; }
+@keyframes tilt {
+  0% { transform: translateY(-.9rem) scale(1.16) rotateX(2deg) rotateY(-3deg); }
+  100% { transform: translateY(-.9rem) scale(1.16) rotateX(-2deg) rotateY(3deg); }
+}
+@keyframes shine { 0% { opacity: 1; transform: translateX(-60%); } 100% { opacity: 1; transform: translateX(60%); } }
+.icon.bump .icon-art { animation: bump .32s ease; }
+@keyframes bump { 40% { transform: translateY(-.9rem) scale(1.16) translateX(var(--bx, 0)); } }
+.icon-name { display: none; }
+.badge { position: absolute; right: .7rem; top: .7rem; z-index: 1; padding: .2rem .55rem; font-size: calc(.95rem * var(--fs)); font-weight: 700; color: #0b0d12; background: #f3f5f9; border-radius: .35rem; }
+
+.foot {
+  position: absolute; bottom: 2.2rem; left: 0; right: 0; z-index: 2;
+  display: flex; justify-content: center; font-size: calc(1.4rem * var(--fs)); color: var(--muted);
+}
+.ver { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.hint-list { display: flex; gap: 2.2rem; opacity: .85; }
+.hint { display: flex; align-items: center; gap: .55rem; }
+.bg { display: inline-grid; place-items: center; min-width: 2.3rem; height: 2.3rem; padding: 0 .1rem; box-sizing: border-box; border-radius: 99px; font-size: calc(1.2rem * var(--fs)); font-weight: 700; color: #0b0d12; text-shadow: none; }
+.bg .ic { width: 1.45rem; height: 1.45rem; }
+.g-a { background: var(--pad-a); }
+.g-b { background: var(--pad-b); }
+.g-menu { background: var(--text); color: var(--ink); }
+.stage[data-bg="decor"] .g-menu { color: #0b0d12; }
+.g-num { background: transparent; color: var(--text); border: 1px solid var(--line); padding: 0 .5rem; border-radius: .4rem; font-variant-numeric: tabular-nums; }
+
+.stage.enter { animation: homeIn 1.3s cubic-bezier(.16, 1, .3, 1) .08s both; }
+.stage.enter .dock { animation: rise 1s cubic-bezier(.16, 1, .3, 1) .25s both; }
+.stage.enter .foot { animation: fadeIn .8s ease .6s both; }
+@keyframes homeIn { from { opacity: 0; transform: scale(1.06); } to { opacity: 1; transform: none; } }
+@keyframes rise { from { opacity: 0; transform: translateY(1.6rem); } to { opacity: 1; transform: none; } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* ---------- météo animée sur le décor : nuages, pluie, neige, étoiles, aurore ----------
+   Uniquement des déplacements et des fondus de calques déjà dessinés : la carte graphique
+   s'en charge, le processeur reste libre. Tout s'arrête quand une appli est ouverte. */
+.sky {
+  position: absolute; inset: 0; z-index: 1; overflow: hidden; pointer-events: none;
+  --drop: #ffffff80; --flake: #ffffffee; --star: #ffffff; --cloud: 255, 255, 255; --cloud-o: .5;
+  opacity: 0; transition: opacity 1.2s ease;
+}
+.sky.on { opacity: 1; }
+.sky > * { position: absolute; display: none; }
+.sky[data-sky~="rays"] .sky-sun, .sky[data-sky~="stars"] .sky-stars,
+.sky[data-sky~="aurora"] .sky-aurora, .sky[data-sky~="clouds"] .sky-clouds, .sky[data-sky~="fog"] .sky-fog,
+.sky[data-sky~="rain"] .sky-rain, .sky[data-sky~="snow"] .sky-snow, .sky[data-sky~="flash"] .sky-flash { display: block; }
+
+/* rayons qui tournent lentement autour du soleil du décor */
+.sky-sun { left: var(--orb-x, 74%); top: var(--orb-y, 24%); width: 44rem; height: 44rem; transform: translate(-50%, -50%); }
+.sky-sun::before { content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: repeating-conic-gradient(#fff3c81f 0 5deg, transparent 5deg 15deg);
+  -webkit-mask-image: radial-gradient(closest-side, #000 22%, transparent); mask-image: radial-gradient(closest-side, #000 22%, transparent);
+  animation: spin 160s linear infinite; }
+
+.sky-stars { inset: 0 0 42%; background-size: 31rem 23rem; animation: twinkle 3.6s ease-in-out infinite alternate;
+  background-image:
+    radial-gradient(.13rem .13rem at 3rem 4rem, var(--star) 50%, transparent), radial-gradient(.1rem .1rem at 11rem 15rem, var(--star) 50%, transparent),
+    radial-gradient(.16rem .16rem at 19rem 7rem, var(--star) 50%, transparent), radial-gradient(.1rem .1rem at 26rem 18rem, var(--star) 50%, transparent),
+    radial-gradient(.12rem .12rem at 7rem 20rem, var(--star) 50%, transparent), radial-gradient(.09rem .09rem at 23rem 2rem, var(--star) 50%, transparent),
+    radial-gradient(.11rem .11rem at 15rem 11rem, var(--star) 50%, transparent), radial-gradient(.14rem .14rem at 29rem 12rem, var(--star) 50%, transparent);
+  -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent); mask-image: linear-gradient(180deg, #000 55%, transparent); }
+.sky-stars + .sky-stars { background-size: 23rem 17rem; background-position: 7rem 5rem; animation-duration: 5.2s; animation-direction: alternate-reverse; opacity: .7; }
+@keyframes twinkle { from { opacity: .35; } to { opacity: .95; } }
+
+.sky-aurora { inset: -10% -10% 45%; }
+.sky-aurora i { position: absolute; width: 70rem; height: 22rem; border-radius: 50%; opacity: .55; }
+.sky-aurora i:nth-child(1) { left: 0; top: 7rem; background: radial-gradient(closest-side, #2ee59d80, transparent); animation: auroraA 22s ease-in-out infinite alternate; }
+.sky-aurora i:nth-child(2) { left: 30%; top: 3rem; background: radial-gradient(closest-side, #3fb6ff66, transparent); animation: auroraB 27s ease-in-out infinite alternate; }
+.sky-aurora i:nth-child(3) { left: 55%; top: 10rem; background: radial-gradient(closest-side, #a46bff5c, transparent); animation: auroraA 31s ease-in-out -9s infinite alternate-reverse; }
+@keyframes auroraA { from { transform: translateX(-8rem) rotate(-8deg) scaleY(.8); } to { transform: translateX(10rem) rotate(6deg) scaleY(1.15); } }
+@keyframes auroraB { from { transform: translateX(6rem) rotate(5deg); } to { transform: translateX(-9rem) rotate(-7deg) scaleY(1.2); } }
+
+/* nuages : plusieurs boules douces qui forment un vrai nuage, et qui dérivent */
+.sky-clouds { inset: 0 0 45%; }
+.sky-clouds i { position: absolute; left: 0; width: 36rem; height: 12rem; animation: drift 150s linear infinite;
+  background:
+    radial-gradient(closest-side at 30% 62%, rgba(var(--cloud), var(--cloud-o)), transparent),
+    radial-gradient(closest-side at 52% 44%, rgba(var(--cloud), var(--cloud-o)), transparent),
+    radial-gradient(closest-side at 72% 64%, rgba(var(--cloud), var(--cloud-o)), transparent),
+    radial-gradient(46% 25% at 50% 72%, rgba(var(--cloud), calc(var(--cloud-o) * .9)), transparent); }
+.sky-clouds i:nth-child(1) { top: 3rem; animation-delay: -30s; }
+.sky-clouds i:nth-child(2) { top: 10rem; width: 28rem; height: 9rem; animation-duration: 190s; animation-delay: -120s; }
+.sky-clouds i:nth-child(3) { top: 0; width: 46rem; height: 15rem; animation-duration: 230s; animation-delay: -170s; }
+.sky-clouds i:nth-child(4) { top: 15rem; width: 24rem; height: 8rem; animation-duration: 170s; animation-delay: -60s; }
+.sky[data-sky~="dense"] .sky-clouds i { width: 60rem; height: 18rem; }
+@keyframes drift { from { transform: translateX(-62rem); } to { transform: translateX(112rem); } }
+
+.sky-fog { inset: 14rem 0 auto; height: 40rem; }
+.sky-fog i { position: absolute; left: 0; width: 200%; height: 16rem;
+  background: linear-gradient(90deg, transparent, #ffffff3d 20%, transparent 40%, #ffffff33 65%, transparent 85%);
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 40%, #000 60%, transparent); mask-image: linear-gradient(180deg, transparent, #000 40%, #000 60%, transparent);
+  animation: fogMove 70s linear infinite; }
+.sky-fog i + i { top: 14rem; animation-duration: 95s; animation-direction: reverse; opacity: .85; }
+@keyframes fogMove { from { transform: translateX(-50%); } to { transform: translateX(0); } }
+
+.sky-rain { inset: -30rem -12% 0; transform: rotate(9deg); }
+.sky-rain::before { content: ""; position: absolute; inset: 0; background-size: 30rem 30rem; animation: fall .75s linear infinite;
+  background-image:
+    radial-gradient(.11rem 1.7rem at 2rem 3rem, var(--drop), transparent), radial-gradient(.11rem 1.7rem at 9rem 17rem, var(--drop), transparent),
+    radial-gradient(.11rem 1.7rem at 15rem 8rem, var(--drop), transparent), radial-gradient(.11rem 1.7rem at 21rem 22rem, var(--drop), transparent),
+    radial-gradient(.11rem 1.7rem at 27rem 13rem, var(--drop), transparent), radial-gradient(.11rem 1.7rem at 5rem 26rem, var(--drop), transparent),
+    radial-gradient(.11rem 1.7rem at 18rem 1rem, var(--drop), transparent), radial-gradient(.11rem 1.7rem at 24rem 6rem, var(--drop), transparent); }
+.sky-rain + .sky-rain::before { background-size: 21rem 21rem; animation-duration: 1.05s; opacity: .55; }
+.sky[data-sky~="heavy"] .sky-rain::before { animation-duration: .45s; }
+@keyframes fall { from { transform: translateY(0); } to { transform: translateY(30rem); } }
+
+.sky-snow { inset: -26rem 0 0; animation: sway 5s ease-in-out infinite alternate; }
+.sky-snow::before { content: ""; position: absolute; inset: 0; background-size: 26rem 26rem; animation: snowfall 11s linear infinite;
+  background-image:
+    radial-gradient(.3rem .3rem at 3rem 4rem, var(--flake) 45%, transparent), radial-gradient(.22rem .22rem at 12rem 16rem, var(--flake) 45%, transparent),
+    radial-gradient(.34rem .34rem at 19rem 7rem, var(--flake) 45%, transparent), radial-gradient(.24rem .24rem at 23rem 21rem, var(--flake) 45%, transparent),
+    radial-gradient(.28rem .28rem at 7rem 22rem, var(--flake) 45%, transparent), radial-gradient(.2rem .2rem at 16rem 1rem, var(--flake) 45%, transparent); }
+.sky-snow + .sky-snow { animation-duration: 7s; animation-direction: alternate-reverse; }
+.sky-snow + .sky-snow::before { background-size: 17rem 17rem; animation-duration: 16s; opacity: .6; }
+@keyframes snowfall { from { transform: translateY(0); } to { transform: translateY(26rem); } }
+@keyframes sway { from { transform: translateX(-1.6rem); } to { transform: translateX(1.6rem); } }
+
+.sky-flash { inset: 0; background: #e8eeff; opacity: 0; animation: flash 9s linear infinite; }
+@keyframes flash { 0%, 90% { opacity: 0; } 91% { opacity: .28; } 92% { opacity: 0; } 94% { opacity: .18; } 96%, 100% { opacity: 0; } }
+
+/* météo : à côté de l'heure, dans le centre de contrôle, sur l'écran de veille */
+.wx-chip { display: flex; align-items: center; gap: .55rem; font-size: calc(2.1rem * var(--fs)); font-weight: 600; color: inherit; font-variant-numeric: tabular-nums; }
+.wx-chip .ic { width: 2.4rem; height: 2.4rem; }
+.cc-wx { display: flex; align-items: center; gap: .6rem; margin: .5rem 0 0; font-size: calc(1.6rem * var(--fs)); color: var(--text-2); }
+.cc-wx .ic { width: 2rem; height: 2rem; }
+.saver-wx { display: flex; justify-content: center; align-items: center; gap: .7rem; margin: .8rem 0 0; font-size: calc(2rem * var(--fs)); font-weight: 600; color: #ffffffa8; }
+.saver-wx .ic { width: 2.4rem; height: 2.4rem; }
+.wx-big .ic { width: 4.4rem; height: 4.4rem; color: var(--text); }
+
+/* recopie AirPlay : sous la fenêtre vidéo d'UxPlay (visible quand le centre de contrôle s'ouvre par-dessus) */
+.ap { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; text-align: center; background: #000; color: #fff; }
+.ap .ic { width: 9rem; height: 9rem; margin: 0 auto 1.6rem; stroke-width: 1.4; }
+.ap-title { margin: 0; font-size: calc(2.8rem * var(--fs)); font-weight: 700; letter-spacing: -.02em; }
+.ap-sub { margin: .8rem 0 0; font-size: calc(1.7rem * var(--fs)); color: #ffffffa8; }
+
+/* ---------- Réglages (plein écran) & centre de contrôle ---------- */
+.scrim { position: fixed; inset: 0; z-index: 31; background: #000; opacity: 0; transition: opacity .35s ease; }
+.scrim.on { opacity: var(--scrim); }
+.pane {
+  position: fixed; z-index: 32; inset: 0; box-sizing: border-box; display: flex; flex-direction: column;
+  background: radial-gradient(70% 60% at 22% 40%, color-mix(in oklab, var(--pa, #6b7385) 22%, transparent), transparent 70%), var(--ink-2);
+  padding: max(2.6rem, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px), 6rem) 2.4rem max(16px, env(safe-area-inset-left, 0px), 6rem);
+  opacity: 0; transform: scale(1.03); transition: opacity .35s ease, transform .45s var(--ease);
+}
+.pane.on { opacity: 1; transform: none; }
+.pane.side {
+  inset: 1.6rem max(1.6rem, env(safe-area-inset-right, 0px)) 1.6rem auto; width: 46rem; overflow: hidden; border-radius: 2rem;
+  padding: 2.4rem 2rem; background: var(--sheet); border: 1px solid var(--line); box-shadow: 0 2rem 5rem -1rem var(--shadow);
+  transform: translateX(110%);
+}
+.pane.side.on { transform: none; }
+.crumbs { margin: 0; font-size: calc(1.45rem * var(--fs)); font-weight: 600; color: var(--muted); }
+.crumbs b { color: var(--text-2); font-weight: 600; }
+.pane-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 30% minmax(0, 1fr); gap: 4rem; margin-top: 1.4rem; }
+.pane-art { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.8rem; }
+.art-tile {
+  display: grid; place-items: center; width: 17rem; height: 17rem; border-radius: 3.8rem;
+  background: linear-gradient(160deg, var(--pa, #8a92a3), var(--pb, #3b414d));
+  box-shadow: 0 3rem 5rem -2rem #000000c0, inset 0 1px 0 #ffffff40; color: #fff;
+}
+.art-tile .ic { width: 8rem; height: 8rem; stroke-width: 1.6; }
+.art-tile > svg:not(.ic) { width: 60%; height: 60%; }
+.art-tile svg.mark { width: 78%; height: 78%; color: var(--text); }
+.art-caption { margin: 0; max-width: 26rem; text-align: center; font-size: calc(1.55rem * var(--fs)); color: var(--muted); }
+.pane-main { min-height: 0; overflow-y: auto; padding: 1rem 1.2rem 3rem; margin: -1rem -1.2rem 0; scrollbar-width: none; scroll-padding: 2rem 0 calc(18% + 1rem); }
+/* fondu en bas tant qu'il reste des réglages plus bas */
+.pane-main.more { -webkit-mask-image: linear-gradient(180deg, #000 82%, transparent); mask-image: linear-gradient(180deg, #000 82%, transparent); }
+.pane-main::-webkit-scrollbar { display: none; }
+.pane-title { margin: 0; font-size: calc(4.2rem * var(--fs)); font-weight: 700; letter-spacing: -.03em; line-height: 1.05; }
+.pane-lead { margin: .7rem 0 1.8rem; max-width: 52rem; font-size: calc(1.75rem * var(--fs)); color: var(--text-2); }
+.opts { display: flex; flex-direction: column; gap: .55rem; }
+.opt {
+  display: flex; align-items: center; gap: 1.5rem; width: 100%; min-height: 5.8rem; box-sizing: border-box;
+  padding: .9rem 1.7rem; margin: 0; border: 0; border-radius: 1.1rem; background: var(--glass);
+  text-align: left; cursor: pointer; transition: background .2s ease, color .2s ease, transform .25s var(--spring), box-shadow .25s ease;
+}
+.opt:focus { outline: none; }
+.opt > .ic { width: 2.3rem; height: 2.3rem; color: var(--text-2); }
+.opt.is-focus { background: var(--focus-bg); color: var(--focus-fg); transform: scale(1.025); box-shadow: 0 1.2rem 2.4rem -1rem #000000b0; }
+.opt.is-focus > .ic, .opt.is-focus .opt-desc, .opt.is-focus .opt-val { color: var(--focus-muted); }
+.opt[disabled] { cursor: default; opacity: .4; }
+.opt-main { display: flex; flex-direction: column; gap: .15rem; flex: 1; min-width: 0; }
+.opt-title { font-size: calc(1.95rem * var(--fs)); font-weight: 600; }
+.opt-desc { font-size: calc(1.45rem * var(--fs)); color: var(--muted); }
+.opt-val { flex: none; font-size: calc(1.65rem * var(--fs)); color: var(--text-2); white-space: nowrap; }
+.chev { flex: none; width: 1.8rem; height: 1.8rem; color: var(--muted); }
+.opt.is-focus .chev { color: var(--focus-muted); }
+.check { flex: none; width: 2.3rem; height: 2.3rem; color: var(--text); opacity: 0; }
+.opt[aria-checked="true"] .check { opacity: 1; }
+.opt.is-focus .check { color: var(--focus-fg); }
+.opt-group { margin: 2rem 0 .6rem; padding: 0 .4rem; font-size: calc(1.3rem * var(--fs)); font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+.opt-group:first-child { margin-top: 0; }
+.opt-empty, .note { margin: 0; padding: .4rem .4rem; font-size: calc(1.6rem * var(--fs)); color: var(--muted); }
+.card { display: flex; align-items: center; gap: 1.2rem; margin-bottom: 1.6rem; padding: 1.3rem 1.5rem; border-radius: 1.1rem; background: var(--glass); border: 1px solid var(--line); }
+.sdot { flex: none; width: 1rem; height: 1rem; border-radius: 50%; background: var(--muted); }
+.sdot.on { background: var(--pad-a); box-shadow: 0 0 .8rem var(--pad-a); }
+.card-title { font-weight: 600; font-size: calc(1.8rem * var(--fs)); }
+.card-sub { font-size: calc(1.45rem * var(--fs)); color: var(--muted); }
+.facts { display: grid; grid-template-columns: auto 1fr; gap: .9rem 2.4rem; margin: 0 0 2rem; padding: 1.5rem; border-radius: 1.1rem; background: var(--glass); }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 0; overflow-wrap: anywhere; }
+/* diagnostic réseau : consigne pendant l'écoute, puis rapport par rubriques */
+.diag-now { margin-bottom: 1.6rem; padding: 1.8rem 2rem; border-radius: 1.4rem; background: var(--glass); border: 1px solid var(--line); }
+.diag-now p { margin: 0; }
+.diag-now .k { margin-bottom: .8rem; font-size: calc(1.3rem * var(--fs)); font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--pad-a); }
+.diag-now .u { margin: .3rem 0 .9rem; font-size: calc(3.2rem * var(--fs)); font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.diag-now .t { font-size: calc(1.6rem * var(--fs)); color: var(--text-2); }
+.diag-sec { margin: 0 0 1rem; padding: 1.2rem 1.5rem; border: 1px solid var(--line); border-radius: 1.1rem; background: var(--glass); transition: border-color .2s; }
+.diag-sec:focus { outline: none; }
+.diag-sec.is-focus { border-color: color-mix(in oklab, var(--text) 50%, transparent); }
+.diag-sec h3 { margin: 0 0 .5rem; font-size: calc(1.3rem * var(--fs)); font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+.diag-sec.verdict { padding: 1.6rem 1.8rem; }
+.diag-sec.verdict .diag-l { font-size: calc(1.75rem * var(--fs)); }
+.diag-l { display: flex; gap: .9rem; align-items: flex-start; margin: .4rem 0; font-size: calc(1.5rem * var(--fs)); color: var(--text-2); overflow-wrap: anywhere; }
+.diag-l .ic { flex: none; width: 1.8rem; height: 1.8rem; margin-top: .15rem; }
+.diag-l.ok .ic { color: var(--pad-a); }
+.diag-l.bad { color: var(--text); }
+.diag-l.bad .ic { color: #ff9f43; }
+.diag-l.inf { padding-left: 2.7rem; color: var(--muted); }
+.spin { display: inline-block; width: 1.3rem; height: 1.3rem; box-sizing: border-box; border: .17rem solid color-mix(in oklab, currentColor 22%, transparent); border-top-color: currentColor; border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.remote-grid { display: grid; grid-template-columns: auto 1fr; gap: 2.4rem; align-items: center; margin-bottom: 2rem; }
+.qr-card { display: flex; flex-direction: column; align-items: center; gap: .8rem; }
+.qr-card svg, .qr-card img { display: block; width: 13rem; height: 13rem; border-radius: 1rem; background: #fff; }
+.qr-addr { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-2); }
+.steps { display: flex; flex-direction: column; gap: 1.1rem; margin: 0; padding: 0; list-style: none; counter-reset: s; }
+.steps li { display: flex; align-items: center; gap: 1.2rem; font-size: calc(1.75rem * var(--fs)); color: var(--text-2); counter-increment: s; }
+.steps li::before { content: counter(s); flex: none; display: grid; place-items: center; width: 2.8rem; height: 2.8rem; font-weight: 700; font-size: calc(1.4rem * var(--fs)); color: var(--text); border: 1px solid var(--line); border-radius: 50%; }
+kbd { font-family: var(--font); font-weight: 700; padding: .05rem .45rem; border: 1px solid var(--line); border-radius: .35rem; }
+
+/* écran télécommande : le QR code en grand */
+.pane.qrs { justify-content: center; }
+.qr-screen { flex: 1; min-height: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 5.5rem; }
+.qr-big { display: grid; place-items: center; width: min(40rem, 72vh); aspect-ratio: 1; box-sizing: border-box; padding: 1.6rem; border-radius: 2.4rem; background: #fff; box-shadow: 0 3rem 6rem -2rem #000000d0; }
+.qr-big svg, .qr-big img { display: block; width: 100%; height: 100%; }
+.qr-big .qr-wait { margin: 0; padding: 2rem; text-align: center; font-size: calc(1.6rem * var(--fs)); font-weight: 600; color: var(--focus-fg); }
+.qr-side { min-width: 0; max-height: calc(100vh - 5rem); overflow-y: auto; scrollbar-width: none; padding: .6rem 1rem; margin: -.6rem -1rem; }
+.qr-side::-webkit-scrollbar { display: none; }
+.qr-title { margin: .6rem 0 0; font-size: calc(3.6rem * var(--fs)); font-weight: 700; letter-spacing: -.03em; line-height: 1.08; text-wrap: balance; }
+.qr-url { margin: 1.6rem 0 2rem; font-size: calc(2.6rem * var(--fs)); font-weight: 700; letter-spacing: -.01em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.qr-url small { display: block; margin-bottom: .2rem; font-size: calc(1.3rem * var(--fs)); font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+.qr-status { display: flex; align-items: center; gap: 1rem; margin: 2.2rem 0 1.6rem; font-size: calc(1.75rem * var(--fs)); font-weight: 600; }
+.qr-side .opts { max-width: 34rem; }
+.pane.qrs .qr-title { font-size: calc(3.1rem * var(--fs)); }
+.pane.qrs .qr-url { margin: 1.2rem 0 1.4rem; }
+.pane.qrs .steps { gap: .7rem; }
+.pane.qrs .steps li { font-size: calc(1.55rem * var(--fs)); }
+.pane.qrs .steps li::before { width: 2.5rem; height: 2.5rem; }
+.pane.qrs .qr-status { margin: 1.3rem 0 1rem; }
+.qr-net { display: flex; align-items: center; gap: .8rem; margin: -.4rem 0 1.4rem; font-size: calc(1.55rem * var(--fs)); color: var(--text-2); }
+.qr-net .ic { width: 2rem; height: 2rem; flex: none; }
+.qr-net b { color: var(--text); }
+.qr-help { margin: -.4rem 0 1.2rem; max-width: 46rem; font-size: calc(1.4rem * var(--fs)); color: var(--muted); }
+
+/* clavier à l'écran (mots de passe Wi-Fi) */
+.pw-field { display: flex; align-items: center; gap: 1rem; min-height: 5rem; margin-bottom: 1.4rem; padding: 0 1.6rem; border-radius: 1.1rem; background: var(--field); border: .15rem solid var(--line); font-size: calc(2rem * var(--fs)); font-weight: 600; letter-spacing: .04em; overflow: hidden; }
+.pw-field .caret { width: .15rem; height: 2.2rem; background: var(--text); animation: caret 1s steps(2) infinite; }
+.pw-field .ph { color: var(--muted); font-weight: 500; letter-spacing: 0; }
+@keyframes caret { 50% { opacity: 0; } }
+.kb { display: flex; flex-direction: column; gap: .55rem; margin-bottom: 1.2rem; }
+.kb-row { display: flex; gap: .55rem; }
+.kb-key { flex: 1 1 0; min-width: 0; height: 4.4rem; padding: 0; border: 0; border-radius: .8rem; background: var(--glass-2); font-size: calc(1.7rem * var(--fs)); font-weight: 600; cursor: pointer; transition: background .15s ease, color .15s ease, transform .2s var(--spring); }
+.kb-key.w2 { flex-grow: 2; } .kb-key.w3 { flex-grow: 3; } .kb-key.w5 { flex-grow: 5; }
+.kb-key.alt { background: var(--glass); font-size: calc(1.35rem * var(--fs)); color: var(--text-2); }
+.kb-key.go { background: #2f7cf6; color: #fff; }
+.kb-key.on { background: var(--text-2); color: var(--focus-fg); }
+.kb-key:focus { outline: none; }
+.kb-key.is-focus { background: var(--focus-bg); color: var(--focus-fg); transform: scale(1.06); box-shadow: 0 .8rem 1.6rem -.8rem var(--shadow); }
+.kb-key .ic { width: 2rem; height: 2rem; margin: 0 auto; }
+.pane-grid.wide { grid-template-columns: 22% minmax(0, 1fr); }
+.signal { display: inline-flex; align-items: flex-end; gap: .2rem; height: 1.6rem; }
+.signal i { width: .32rem; border-radius: 2px; background: currentColor; opacity: .25; }
+.signal i:nth-child(1) { height: 30%; } .signal i:nth-child(2) { height: 55%; } .signal i:nth-child(3) { height: 80%; } .signal i:nth-child(4) { height: 100%; }
+.signal i.on { opacity: 1; }
+.meter { flex: 0 0 14rem; height: .55rem; border-radius: 9px; background: color-mix(in oklab, currentColor 20%, transparent); overflow: hidden; }
+.meter i { display: block; height: 100%; background: currentColor; border-radius: 9px; }
+
+/* control center */
+.cc-head { margin-bottom: 1.6rem; }
+.cc-time { margin: 0; font-size: calc(5rem * var(--fs)); font-weight: 700; letter-spacing: -.04em; line-height: 1; font-variant-numeric: tabular-nums; }
+.cc-date { margin: .4rem 0 0; font-size: calc(1.7rem * var(--fs)); color: var(--text-2); }
+.quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: .7rem; margin-bottom: 1.2rem; }
+.cc-app { display: flex; align-items: center; gap: 1.3rem; margin-bottom: .9rem; }
+.cc-app-art { flex: none; display: grid; place-items: center; width: 8.4rem; aspect-ratio: 5 / 3; border-radius: .9rem; background: var(--bg); box-shadow: inset 0 0 0 1px #ffffff14; }
+.cc-app-art svg { width: 46%; height: 52%; }
+.cc-app-k { margin: 0; font-size: calc(1.25rem * var(--fs)); font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+.cc-app-n { margin: .1rem 0 0; font-size: calc(2.2rem * var(--fs)); font-weight: 700; letter-spacing: -.02em; }
+.cc-app-rows { margin-bottom: 1.2rem; }
+.opt.q { flex-direction: column; justify-content: center; gap: .6rem; min-height: 7rem; padding: .9rem .4rem; text-align: center; }
+.opt.q > .ic { width: 2.6rem; height: 2.6rem; }
+.opt.q .opt-title { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(1.5rem * min(var(--fs), 1.06)); }
+/* tuile qui s'allume (mode souris) */
+.opt.q.on { background: var(--led); color: #fff; }
+.opt.q.on > .ic { color: #fff; }
+.opt.q.on.is-focus { background: var(--focus-bg); color: var(--focus-fg); }
+.opt.q.on.is-focus > .ic { color: var(--led); }
+.pane.side .opts { gap: .45rem; }
+.pane.side .opt { min-height: 5.2rem; }
+.pane.side .meter { flex-basis: 9rem; }
+.pane-main.cc-main { flex: 1; padding-bottom: 2rem; }
+
+/* ---------- ouverture d'une appli ---------- */
+.launch {
+  position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; text-align: center;
+  background: var(--lbg); color: var(--lfg, #fff);
+  clip-path: inset(var(--t, 40%) var(--r, 40%) var(--b, 40%) var(--l, 40%) round 1.15rem);
+  transition: clip-path .55s cubic-bezier(.5, 0, .1, 1);
+}
+.launch.on { clip-path: inset(0 0 0 0 round 0); }
+.launch-inner { display: flex; flex-direction: column; align-items: center; gap: 1.4rem; max-width: 52rem; padding: 0 max(16px, env(safe-area-inset-right, 0px)); }
+.launch-logo { width: 22rem; height: 13rem; display: grid; place-items: center; transform: scale(.55); transition: transform .6s var(--ease); }
+.launch.on .launch-logo { transform: none; }
+.launch-logo svg { width: 100%; height: 100%; }
+.launch-status { margin: .6rem 0 0; font-size: calc(2rem * var(--fs)); font-weight: 600; opacity: .85; }
+.launch-bar { position: relative; width: 16rem; height: .25rem; overflow: hidden; border-radius: 9px; background: color-mix(in oklab, currentColor 22%, transparent); }
+.launch-bar i { position: absolute; top: 0; bottom: 0; width: 40%; background: currentColor; border-radius: 9px; animation: indet 1.1s ease-in-out infinite; }
+@keyframes indet { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+.launch-note { margin: 0; font-size: calc(1.8rem * var(--fs)); line-height: 1.5; opacity: .9; text-wrap: pretty; }
+.launch-fine { margin: 0; font-size: calc(1.45rem * var(--fs)); opacity: .65; }
+.launch.ready .launch-bar { display: none; }
+.launch:not(.ready):not(.slow) .launch-note, .launch:not(.ready):not(.slow) .launch-fine { display: none; }
+.launch-note:empty, .launch-fine:empty { display: none; }
+.l-back { display: inline-flex; align-items: center; gap: .7rem; margin-top: 1rem; padding: .9rem 1.7rem .9rem 1rem; font-size: calc(1.65rem * var(--fs)); border: 1px solid color-mix(in oklab, currentColor 30%, transparent); border-radius: 99px; background: color-mix(in oklab, currentColor 8%, transparent); font-weight: 600; cursor: pointer; }
+.l-back:focus-visible { outline: .18rem solid currentColor; outline-offset: .2rem; }
+
+/* ---------- démarrage ----------
+   Comme sur la maquette du kit : symbole au centre sur fond noir, « scaros » en gris dessous.
+   Dans le noir, une lueur se lève ; le symbole sort du flou et se pose. Ses deux fentes
+   s'allument en ambre l'une après l'autre, avec un halo qui déborde puis se calme.
+   Le mot arrive en se resserrant, puis le logo s'avance et s'efface pendant que l'accueil
+   s'ouvre en zoom, comme sur l'Apple TV. Mêmes places que l'écran de démarrage du PC (Plymouth). */
+.boot { position: fixed; inset: 0; z-index: 50; background: #000; transition: opacity .85s ease .12s; }
+.boot.out { opacity: 0; pointer-events: none; }
+.boot-logo { position: absolute; inset: 0; transition: transform 1s cubic-bezier(.4, 0, .2, 1), opacity .7s ease, filter .8s ease; }
+.boot.out .boot-logo { transform: scale(1.14); opacity: 0; filter: blur(.7vh); }
+.boot-halo { position: absolute; left: 50%; top: 46.25vh; width: 74vh; height: 74vh; margin: -37vh 0 0 -37vh; border-radius: 50%;
+  background: radial-gradient(closest-side, #ffffff1c, #ffffff0a 42%, transparent 74%); opacity: 0; transform: scale(.55); }
+.boot-sym, .boot-glow { position: absolute; left: 50%; top: 36.1vh; width: 20.3vh; height: 20.3vh; margin-left: -10.15vh; }
+.boot-sym { color: #fff; opacity: 0; transform: scale(.86); filter: blur(1.4vh); }
+.boot-glow { opacity: 0; filter: blur(1.7vh); }
+.boot-sym svg, .boot-glow svg, .boot-word svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.boot-word { position: absolute; left: 50%; top: 62.3vh; width: 17.6vh; height: 3.23vh; margin-left: -8.8vh; color: #9a9ca6; opacity: 0; }
+.boot .sym-slot { transform: scaleX(0); transform-box: fill-box; }
+.boot .sym-slot-a { transform-origin: 100% 50%; }   /* fente du haut : s'ouvre côté droit */
+.boot .sym-slot-b { transform-origin: 0% 50%; }     /* fente du bas : s'ouvre côté gauche */
+.boot.run .boot-halo { animation: haloIn 2.6s cubic-bezier(.16, 1, .3, 1) .2s forwards; }
+.boot.run .boot-sym { animation: symIn 1.35s cubic-bezier(.16, 1, .3, 1) .35s forwards; }
+.boot.run .sym-slot-a { animation: slotIn .7s cubic-bezier(.65, 0, .35, 1) 1.2s forwards; }
+.boot.run .sym-slot-b { animation: slotIn .7s cubic-bezier(.65, 0, .35, 1) 1.45s forwards; }
+.boot.run .boot-glow { animation: glowIn 2.3s ease-out 1.2s forwards; }
+.boot.run .boot-word { animation: wordIn 1.2s cubic-bezier(.16, 1, .3, 1) 2.1s forwards; }
+@keyframes haloIn { to { opacity: 1; transform: none; } }
+@keyframes symIn { 0% { opacity: 0; transform: scale(.86); filter: blur(1.4vh); }
+  55% { filter: blur(0); } 100% { opacity: 1; transform: none; filter: blur(0); } }
+@keyframes slotIn { to { transform: scaleX(1); } }
+@keyframes glowIn { 0% { opacity: 0; } 32% { opacity: .95; } 100% { opacity: .32; } }
+@keyframes wordIn { 0% { opacity: 0; transform: translateY(1.1vh) scaleX(1.08); filter: blur(.5vh); color: #4c4e56; }
+  100% { opacity: 1; transform: none; filter: blur(0); color: #9a9ca6; } }
+
+/* ---------- veille & extinction ---------- */
+.off { position: fixed; inset: 0; z-index: 45; display: grid; place-items: center; text-align: center; background: #000; color: var(--text-2); cursor: pointer; overflow: hidden; }
+.off.fade { animation: fadeIn 1s ease both; }
+.saver-bg { position: absolute; inset: -20%; opacity: .55;
+  background: radial-gradient(35% 40% at 30% 40%, #2b3f7a, transparent 70%), radial-gradient(30% 35% at 70% 65%, #5a2b6e, transparent 70%);
+  animation: aurora 30s ease-in-out infinite alternate; }
+.off[data-kind="off"] .saver-bg, .off[data-kind="off"] .saver-time, .off[data-kind="off"] .saver-date { display: none; }
+@keyframes aurora { from { transform: translate3d(-4%, -3%, 0) rotate(0deg); } to { transform: translate3d(4%, 3%, 0) rotate(12deg); } }
+.saver { position: relative; }
+.saver-time { margin: 0; font-weight: 500; font-size: calc(10rem * var(--fs)); line-height: 1; color: #ffffffd8; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.saver-date { margin: 1rem 0 0; font-size: calc(2.5rem * var(--fs)); font-weight: 600; color: #ffffffa8; text-transform: capitalize; }
+.off-msg { margin: 2.4rem 0 0; font-size: calc(1.65rem * var(--fs)); color: var(--muted); }
+.off-led { position: absolute; right: max(3rem, calc(env(safe-area-inset-right, 0px) + 16px)); bottom: max(2.4rem, calc(env(safe-area-inset-bottom, 0px) + 16px)); width: .7rem; height: .7rem; border-radius: 50%; background: var(--led); box-shadow: 0 0 .9rem var(--led); }
+.blink { position: fixed; inset: 0; z-index: 40; background: #000; opacity: 0; pointer-events: none; }
+.blink.run { animation: blinkk .7s ease; }
+@keyframes blinkk { 0% { opacity: 0; } 35%, 60% { opacity: 1; } 100% { opacity: 0; } }
+
+/* ---------- notifications & volume ---------- */
+.toast {
+  position: fixed; z-index: 60; top: max(12.4rem, calc(env(safe-area-inset-top, 0px) + 16px)); right: max(16px, env(safe-area-inset-right, 0px), 6rem);
+  display: flex; align-items: center; gap: 1.1rem; box-sizing: border-box; max-width: min(48rem, calc(100% - 32px));
+  padding: 1rem 1.4rem; border-radius: 1.2rem; background: var(--sheet); border: 1px solid var(--line); box-shadow: 0 1.4rem 3rem -1rem var(--shadow);
+  font-size: calc(1.6rem * var(--fs)); font-weight: 500; opacity: 0; transform: translateY(-.8rem); transition: opacity .3s ease, transform .35s var(--ease); pointer-events: none;
+}
+.toast.on { opacity: 1; transform: none; }
+/* panneau ouvert : la notification passe en bas à gauche pour ne rien cacher */
+.tv.qr-open .toast { top: auto; bottom: max(2.4rem, calc(env(safe-area-inset-bottom, 0px) + 16px)); max-width: min(34rem, calc(100% - 32px)); }
+.tv.pane-open:not(.qr-open) .toast { top: auto; right: auto; bottom: max(2.4rem, calc(env(safe-area-inset-bottom, 0px) + 16px)); left: max(16px, env(safe-area-inset-left, 0px), 6rem); max-width: min(26rem, calc(100% - 32px)); }
+.toast-ic { flex: none; display: grid; place-items: center; width: 3.2rem; height: 3.2rem; border-radius: .8rem; background: var(--glass-2); }
+.toast-ic .ic { width: 1.8rem; height: 1.8rem; }
+.vol {
+  position: fixed; top: max(1.6rem, env(safe-area-inset-top, 0px)); left: 50%; z-index: 55;
+  display: flex; align-items: center; gap: 1.3rem; padding: 1rem 1.8rem 1rem 1.4rem;
+  border: 1px solid var(--line); border-radius: 99px; background: var(--sheet); box-shadow: 0 1.4rem 3rem -1rem var(--shadow);
+  opacity: 0; transform: translate(-50%, -1rem); transition: opacity .25s ease, transform .3s var(--ease); pointer-events: none;
+}
+.vol.on { opacity: 1; transform: translate(-50%, 0); }
+.vol .ic { width: 2.4rem; height: 2.4rem; }
+.vol-track { position: relative; width: 22rem; height: .7rem; overflow: hidden; border-radius: 9px; background: var(--glass-2); }
+.vol-track i { position: absolute; inset: 0; background: var(--text); transform-origin: left; transform: scaleX(var(--v, .35)); transition: transform .15s ease; }
+.vol.muted .vol-track i { opacity: .25; }
+.vol-num { min-width: 4.6rem; text-align: right; font-size: calc(1.8rem * var(--fs)); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* ---------- télécommande de démo (maquette) ---------- */
+.phone {
+  position: fixed; top: 50%; right: max(2.4rem, calc(env(safe-area-inset-right, 0px) + 16px)); z-index: 58;
+  display: flex; flex-direction: column; gap: 1.1rem; width: 17rem; box-sizing: border-box;
+  padding: 1.5rem 1.3rem 1.4rem; transform: translateY(-50%);
+  background: #0a0d13; border: 1px solid #ffffff26; border-radius: 2.6rem; box-shadow: 0 2rem 4rem -1rem #000000d0;
+  font-size: calc(1rem * var(--fs)); animation: phoneIn .45s var(--ease);
+}
+@keyframes phoneIn { from { opacity: 0; transform: translate(2rem, -50%); } }
+.phone-head { display: flex; align-items: center; gap: .55rem; font-size: calc(.9rem * var(--fs)); font-weight: 600; color: var(--text-2); }
+.live { width: .55rem; height: .55rem; border-radius: 50%; background: var(--pad-a); box-shadow: 0 0 .6rem var(--pad-a); }
+.phone-x { margin-left: auto; display: grid; place-items: center; width: 1.9rem; height: 1.9rem; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: none; cursor: pointer; }
+.phone-x .ic { width: 1rem; height: 1rem; }
+.psearch { display: flex; gap: .5rem; }
+.psearch input { flex: 1; min-width: 0; box-sizing: border-box; padding: .6rem .8rem; font: inherit; font-size: calc(.95rem * var(--fs)); color: var(--text); background: #ffffff0f; border: 1px solid var(--line); border-radius: .7rem; }
+.dpad { display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr); width: 12rem; height: 12rem; margin: .2rem auto; border-radius: 50%; background: #ffffff0b; border: 1px solid var(--line); }
+.dpad button { display: grid; place-items: center; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 50%; }
+.dpad .ic { width: 1.5rem; height: 1.5rem; }
+.dpad [data-pact="up"] { grid-area: 1 / 2; }
+.dpad [data-pact="left"] { grid-area: 2 / 1; }
+.dpad [data-pact="ok"] { grid-area: 2 / 2; margin: .35rem; background: #ffffff1c; font-weight: 700; font-size: calc(1.05rem * var(--fs)); }
+.dpad [data-pact="right"] { grid-area: 2 / 3; }
+.dpad [data-pact="down"] { grid-area: 3 / 2; }
+.prow { display: flex; gap: .6rem; align-items: center; }
+/* comme la vraie télécommande : 2 × 2 touches, et le volume en bascule verticale à droite */
+.pctrl { display: grid; grid-template-columns: 1fr 1fr 3.4rem; gap: .5rem; }
+.pctrl .pbtn { font-size: calc(.85rem * var(--fs)); }
+.procker { grid-column: 3; grid-row: 1 / 3; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: 1.7rem; background: #ffffff0d; }
+.procker button { flex: 1; padding: 0; border: 0; background: none; color: inherit; font-size: calc(1.2rem * var(--fs)); cursor: pointer; }
+.procker .plabel { flex: none; padding: .25rem 0; font-size: calc(.62rem * var(--fs)); font-weight: 700; letter-spacing: .08em; color: var(--muted); border-block: 1px solid var(--line); }
+.procker button:focus-visible { outline: .14rem solid #fff; outline-offset: -.14rem; }
+.pbtn { flex: 1; display: flex; align-items: center; justify-content: center; gap: .4rem; padding: .62rem 0; border: 1px solid var(--line); border-radius: .8rem; background: #ffffff0d; font-weight: 600; font-size: calc(.95rem * var(--fs)); cursor: pointer; }
+.pbtn .ic { width: 1.1rem; height: 1.1rem; }
+.pbtn:focus-visible, .dpad button:focus-visible, .phone-x:focus-visible { outline: .14rem solid #fff; outline-offset: .1rem; }
+.press { animation: press .22s ease; }
+@keyframes press { 50% { background: #ffffff38; transform: scale(.94); } }
+
+/* ---------- portrait (maquette ouverte sur un téléphone) ---------- */
+@media (max-aspect-ratio: 1/1) {
+  html { font-size: clamp(11px, 3.1vw, 20px); }
+  body { overflow-y: auto; }
+  .tv { height: auto; min-height: 100%; display: flex; flex-direction: column; }
+  .stage { height: auto; flex: 1; display: flex; flex-direction: column; padding-bottom: 2rem; }
+  .shelf { height: auto; }
+  .status, .shelf-info, .dock, .foot { position: relative; top: auto; bottom: auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); left: auto; }
+  .status { margin-top: 1.4rem; }
+  .wx-cap { display: none; }
+  .brand-logo { height: 2.6rem; }
+  .capsule { gap: .9rem; padding: .6rem 1.1rem; }
+  .scene-art { right: 1rem; top: 5rem; width: 14rem; height: 11rem; }
+  .shelf-info { margin-top: 13rem; max-width: none; }
+  .shelf-title { font-size: calc(4rem * var(--fs)); }
+  .shelf-desc { font-size: calc(1.5rem * var(--fs)); }
+  .dock { margin-top: 3rem; }
+  .dock-glass { width: auto; padding: 1.4rem; border-radius: 2.2rem; }
+  .icons { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.4rem 1.2rem; }
+  .icon-name { display: none; }
+  .icon.is-focus .icon-art { transform: scale(1.05); animation: none; }
+  .foot { margin-top: 2.6rem; }
+  .hint-list { display: none; }
+  .pane { padding: 1.6rem max(16px, env(safe-area-inset-right, 0px)) 1.6rem max(16px, env(safe-area-inset-left, 0px)); }
+  .pane-grid { grid-template-columns: 1fr; gap: 1.6rem; }
+  .pane-art { display: none; }
+  .pane-title { font-size: calc(2.2rem * var(--fs)); }
+  .pane.side { inset: auto 0 0 0; width: auto; max-height: 88%; border-radius: 1.6rem 1.6rem 0 0; transform: translateY(105%); overflow-y: auto; }
+  .remote-grid { grid-template-columns: 1fr; justify-items: center; }
+  .qr-screen { grid-template-columns: 1fr; justify-items: center; gap: 2rem; }
+  .qr-big { width: min(80vw, 22rem); }
+  .qr-title { font-size: calc(2.2rem * var(--fs)); }
+  .qr-url { font-size: calc(1.8rem * var(--fs)); }
+  .saver-time { font-size: calc(6rem * var(--fs)); }
+  .toast { right: 16px; left: 16px; max-width: none; }
+  .vol-track { width: 12rem; }
+  .phone { top: auto; bottom: 0; left: 0; right: 0; width: auto; transform: none; border-radius: 1.6rem 1.6rem 0 0; padding-bottom: max(1.4rem, env(safe-area-inset-bottom, 0px)); animation: none; }
+  .dpad { width: 10rem; height: 10rem; }
+}
+
+/* ---------- économiseur d'écran : le paysage de l'accueil en plein écran, qui avance lentement ----------
+   Le menu (et un panneau ouvert) se cache derrière un fondu au noir ; il réapparaît tel quel. Seuls le
+   décor et le ciel bougent (zoom et glissement lents, faits par la carte graphique). */
+.ss { position: fixed; inset: 0; z-index: 44; color: #fff; cursor: none; }
+.ss-veil { position: absolute; inset: 0; background: #000; opacity: 0; transition: opacity 1s ease; pointer-events: none; }
+.ss.dark .ss-veil { opacity: 1; }
+.ss-info { position: absolute; max-width: 62rem; opacity: 0; text-shadow: 0 .2rem 2.6rem #00000099, 0 .1rem .5rem #00000066; }
+.ss.on .ss-info { opacity: 1; }
+.ss-info[data-pos="bl"] { left: 7rem; bottom: 6.5rem; }
+.ss-info[data-pos="br"] { right: 7rem; bottom: 6.5rem; text-align: right; }
+.ss-info[data-pos="tr"] { right: 7rem; top: 6rem; text-align: right; }
+.ss-info[data-pos="tl"] { left: 7rem; top: 6rem; }
+.ss-time { margin: 0; font-size: 10.5rem; font-weight: 600; letter-spacing: -.045em; line-height: .92; font-variant-numeric: tabular-nums; }
+.ss-date { margin: 1rem 0 0; font-size: calc(2.3rem * var(--fs)); font-weight: 600; }
+.ss-date::first-letter { text-transform: uppercase; }
+.ss-wx { display: flex; align-items: center; gap: .7rem; margin: .5rem 0 0; font-size: calc(2rem * var(--fs)); color: #ffffffe6; }
+.ss-wx:empty { display: none; }
+.ss-info[data-pos$="r"] .ss-wx { justify-content: flex-end; }
+.ss-wx .ic { width: 2.3rem; height: 2.3rem; filter: drop-shadow(0 .1rem .6rem #00000080); }
+.ss-cap { margin: 1.8rem 0 0; font-size: calc(1.3rem * var(--fs)); font-weight: 700; letter-spacing: .22em; text-transform: uppercase; color: #ffffffbf; }
+.tv.screensaver .status, .tv.screensaver .shelf-info, .tv.screensaver .dock, .tv.screensaver .foot, .tv.screensaver .home-scrim,
+.tv.screensaver .pane, .tv.screensaver .scrim, .tv.screensaver .phone { visibility: hidden; }
+.tv.screensaver .decor, .tv.screensaver .sky { will-change: transform; transform-origin: var(--kb-o, 50% 60%); animation: saverPan 64s ease-in-out both; }
+@keyframes saverPan { from { transform: scale(1.03); } to { transform: scale(1.16) translate(var(--kb-x, -1.5%), var(--kb-y, -1%)); } }
+
+/* une appli est ouverte par-dessus : le menu caché derrière ne dessine plus rien */
+.tv.away .stage { visibility: hidden; }
+.tv.away .stage *, .tv.away .launch * { animation-play-state: paused !important; }
+/* personne n'a touché au menu depuis un moment : les animations décoratives se figent */
+.tv.idle .scene-art, .tv.idle .icon-art { animation-play-state: paused !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-delay: 0s !important; transition-duration: .001ms !important; }
+}
+</style>
+
+<div class="tv" id="tv">
+  <div class="stage" id="stage" data-bg="decor">
+    <div class="decor" id="decor" aria-hidden="true">
+      <div class="decor-sky"></div>
+      <div class="decor-orb"></div>
+      <svg class="decor-land" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+        <defs>
+          <linearGradient id="dl-haze" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity=".22"/></linearGradient>
+          <linearGradient id="dl-lake" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color: var(--sky-b)"/><stop offset="1" style="stop-color: var(--lake)"/></linearGradient>
+        </defs>
+        <path d="M0 560 L90 470 L160 505 L250 400 L330 470 L410 432 L500 330 L585 420 L660 395 L760 300 L860 410 L930 382 L1020 455 L1110 360 L1200 440 L1290 392 L1380 470 L1470 410 L1600 480 L1600 900 L0 900 Z" style="fill: var(--far)"/>
+        <path d="M500 330 L470 365 L485 362 L500 376 L515 360 L532 369 Z M760 300 L726 342 L744 337 L760 352 L777 335 L796 346 Z M1110 360 L1084 392 L1098 389 L1110 401 L1124 387 L1138 395 Z M250 400 L228 427 L240 425 L252 435 L262 423 L274 431 Z M1470 410 L1450 433 L1462 431 L1472 440 L1482 430 L1492 436 Z" fill="#fff" style="opacity: var(--cap)"/>
+        <rect x="0" y="420" width="1600" height="200" fill="url(#dl-haze)"/>
+        <path d="M0 600 C120 556 220 574 330 588 C440 603 520 556 640 560 C760 565 840 612 960 602 C1080 592 1180 546 1300 556 C1420 566 1500 598 1600 588 L1600 900 L0 900 Z" style="fill: var(--mid)"/>
+        <path d="M0 646 C420 636 1180 636 1600 646 L1600 712 L0 712 Z" fill="url(#dl-lake)"/>
+        <path d="M220 664h180M610 676h260M1040 662h210M1330 684h140" stroke="#fff" stroke-opacity=".22" stroke-width="2" stroke-linecap="round"/>
+        <path d="M0 698 C150 676 300 708 470 702 C640 696 760 672 930 680 C1100 688 1260 706 1420 694 C1500 688 1560 690 1600 694 L1600 900 L0 900 Z" style="fill: var(--near)"/>
+        <path d="M40 675 L2 778 L19 772 L-15 854 L9 848 L-29 905 L109 905 L71 848 L95 854 L61 772 L78 778 Z M110 600 L60 735 L83 726 L38 834 L70 825 L20 900 L200 900 L150 825 L182 834 L137 726 L160 735 Z M185 695 L150 790 L166 783 L135 859 L157 852 L122 905 L248 905 L213 852 L235 859 L204 783 L220 790 Z M250 725 L222 802 L235 796 L209 858 L227 852 L199 895 L301 895 L273 852 L291 858 L265 796 L278 802 Z M315 780 L295 834 L304 830 L286 874 L299 870 L279 900 L351 900 L331 870 L344 874 L326 830 L335 834 Z M1300 780 L1280 834 L1289 830 L1271 874 L1284 870 L1264 900 L1336 900 L1316 870 L1329 874 L1311 830 L1320 834 Z M1370 725 L1340 806 L1354 801 L1327 865 L1346 860 L1316 905 L1424 905 L1394 860 L1413 865 L1386 801 L1400 806 Z M1440 640 L1397 757 L1417 749 L1378 843 L1405 835 L1362 900 L1518 900 L1475 835 L1502 843 L1463 749 L1483 757 Z M1520 585 L1467 729 L1491 719 L1443 835 L1477 825 L1424 905 L1616 905 L1563 825 L1597 835 L1549 719 L1573 729 Z M1590 680 L1554 779 L1570 772 L1537 852 L1560 845 L1524 900 L1656 900 L1620 845 L1643 852 L1610 772 L1626 779 Z" style="fill: var(--tree)"/>
+      </svg>
+    </div>
+    <div class="shelf" id="shelf" aria-hidden="true"></div>
+    <div class="sky" id="sky" aria-hidden="true">
+      <div class="sky-sun"></div>
+      <div class="sky-stars"></div><div class="sky-stars"></div>
+      <div class="sky-aurora"><i></i><i></i><i></i></div>
+      <div class="sky-clouds"><i></i><i></i><i></i><i></i></div>
+      <div class="sky-fog"><i></i><i></i></div>
+      <div class="sky-rain"></div><div class="sky-rain"></div>
+      <div class="sky-snow"></div><div class="sky-snow"></div>
+      <div class="sky-flash"></div>
+    </div>
+    <div class="home-scrim" aria-hidden="true"></div>
+
+    <header class="status">
+      <div class="brand" role="img" aria-label="Scaros" data-logo="lockup"></div>
+      <div class="status-right">
+        <div class="capsule">
+          <span class="clock" id="clock">--:--</span>
+          <span class="wx-chip" id="st-wx" hidden></span>
+          <span class="cap-sep"></span>
+          <span class="cap-icons">
+            <span class="st" id="st-out" hidden></span>
+            <span class="st" id="st-mute" title="Son coupé" data-icon="mute" hidden></span>
+            <span class="st" id="st-audio" data-icon="headphones" hidden></span>
+            <span class="st" id="st-phone" title="Téléphone connecté" data-icon="phone" hidden></span>
+            <span class="st" id="st-pad" title="Manette connectée" data-icon="gamepad" hidden></span>
+            <span class="st" id="st-airplay" title="Recopie AirPlay en cours" data-icon="airplay" hidden></span>
+            <span class="st dim" id="st-wifi" title="Pas de Wi-Fi" data-icon="wifi" hidden></span>
+          </span>
+        </div>
+        <p class="wx-cap" id="wx-cap"></p>
+      </div>
+    </header>
+
+    <section class="shelf-info" id="shelf-info" aria-live="polite">
+      <p class="kicker" id="sh-kicker"></p>
+      <h1 class="shelf-title" id="sh-title"></h1>
+      <p class="shelf-desc" id="sh-desc"></p>
+      <ul class="chips" id="sh-chips"></ul>
+    </section>
+
+    <main class="dock">
+      <div class="dock-glass"><div class="icons" id="icons" role="list" aria-label="Applis"></div></div>
+    </main>
+
+    <footer class="foot">
+      <span class="hint-list" id="hints"></span>
+      <span class="ver" id="ver">Scaros OS · maquette</span>
+    </footer>
+  </div>
+
+  <div class="scrim" id="scrim" hidden></div>
+  <section class="pane" id="pane" hidden aria-label="Réglages"></section>
+
+  <div class="launch" id="launch" hidden>
+    <div class="launch-inner">
+      <div class="launch-logo" id="l-logo"></div>
+      <p class="launch-status" id="l-status"></p>
+      <div class="launch-bar"><i></i></div>
+      <p class="launch-note" id="l-note"></p>
+      <p class="launch-fine" id="l-fine"></p>
+      <button type="button" class="l-back" id="l-back"><span class="bg g-b">B</span> Retour au menu</button>
+    </div>
+  </div>
+
+  <div class="ap" id="ap" hidden>
+    <div><span data-icon="airplay"></span><p class="ap-title" id="ap-title">Recopie de l’écran</p><p class="ap-sub" id="ap-sub"></p></div>
+  </div>
+
+  <div class="blink" id="blink"></div>
+
+  <div class="ss" id="ss" hidden aria-hidden="true">
+    <div class="ss-info" id="ss-info" data-pos="bl">
+      <p class="ss-time" id="ss-time">--:--</p>
+      <p class="ss-date" id="ss-date"></p>
+      <p class="ss-wx" id="ss-wx"></p>
+      <p class="ss-cap" id="ss-cap"></p>
+    </div>
+    <div class="ss-veil"></div>
+  </div>
+
+  <div class="off" id="off" hidden>
+    <div class="saver-bg"></div>
+    <div class="saver">
+      <p class="saver-time" id="sleep-clock">--:--</p>
+      <p class="saver-date" id="sleep-date"></p>
+      <p class="saver-wx" id="sleep-wx"></p>
+      <p class="off-msg" id="off-msg"></p>
+    </div>
+    <span class="off-led"></span>
+  </div>
+
+  <div class="boot" id="boot">
+    <div class="boot-logo" role="img" aria-label="Scaros">
+      <span class="boot-halo"></span>
+      <span class="boot-glow" data-logo="slots"></span>
+      <span class="boot-sym" data-logo="symbol"></span>
+      <span class="boot-word" data-logo="word"></span>
+    </div>
+  </div>
+
+  <div class="vol" id="vol" aria-hidden="true">
+    <span id="vol-ic"></span>
+    <div class="vol-track"><i></i></div>
+    <span class="vol-num" id="vol-num">35</span>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"><span class="toast-ic"></span><span class="toast-text"></span></div>
+
+  <div class="phone" id="phone" hidden aria-label="Télécommande de démo">
+    <div class="phone-head"><span class="live"></span>Connecté à Scaros<button type="button" class="phone-x" data-pact="close" aria-label="Masquer la télécommande" data-icon="close"></button></div>
+    <form class="psearch" id="psearch">
+      <input id="pinput" type="text" placeholder="Rechercher sur YouTube…" autocomplete="off" aria-label="Texte à envoyer">
+      <button type="submit" class="pbtn" style="flex:none;padding:.6rem .8rem" aria-label="Envoyer" data-icon="send"></button>
+    </form>
+    <div class="dpad">
+      <button type="button" data-pact="up" aria-label="Haut" data-icon="up"></button>
+      <button type="button" data-pact="left" aria-label="Gauche" data-icon="left"></button>
+      <button type="button" data-pact="ok">OK</button>
+      <button type="button" data-pact="right" aria-label="Droite" data-icon="right"></button>
+      <button type="button" data-pact="down" aria-label="Bas" data-icon="down"></button>
+    </div>
+    <div class="pctrl">
+      <button type="button" class="pbtn" data-pact="back"><span data-icon="back"></span>Retour</button>
+      <button type="button" class="pbtn" data-pact="home"><span data-icon="home"></span>Accueil</button>
+      <button type="button" class="pbtn" data-pact="playpause"><span data-icon="play"></span>Lecture</button>
+      <button type="button" class="pbtn" data-pact="menu" aria-label="Centre de contrôle">≡ Menu</button>
+      <div class="procker" role="group" aria-label="Volume">
+        <button type="button" data-pact="volup" aria-label="Monter le volume">+</button>
+        <button type="button" class="plabel" data-pact="mute" aria-label="Couper le son">VOL</button>
+        <button type="button" data-pact="voldown" aria-label="Baisser le volume">−</button>
+      </div>
+    </div>
+    <div class="prow">
+      <button type="button" class="pbtn" data-pact="ch1">1</button>
+      <button type="button" class="pbtn" data-pact="ch2">2</button>
+      <button type="button" class="pbtn" data-pact="ch3">3</button>
+      <button type="button" class="pbtn" data-pact="ch4">4</button>
+      <button type="button" class="pbtn" data-pact="ch5">5</button>
+    </div>
+    <p class="phone-addr" style="margin:0;text-align:center;font-size:.82rem;color:var(--muted)">scaros.local:8421</p>
+  </div>
+</div>
+
+<script>
+// Scaros OS — menu TV.
+// Servi par scaros.py, il pilote le vrai PC (mode « live »).
+// Ouvert seul (fichier ou aperçu), il tourne en maquette : rien n'est lancé pour de vrai.
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const portrait = () => matchMedia('(max-aspect-ratio: 1/1)').matches;
+
+  // ---------- icons ----------
+  const I = {
+    display: '<rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M8.5 20h7M12 16.5V20"/>',
+    laptop: '<rect x="5" y="5" width="14" height="10" rx="1.5"/><path d="M3 19h18"/>',
+    tv: '<rect x="3" y="7" width="18" height="12" rx="2.5"/><path d="M9 3.5l3 3.5 3-3.5"/>',
+    phone: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
+    power: '<path d="M12 3v8"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/>',
+    wifi: '<path d="M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.6 16a5 5 0 0 1 6.8 0"/><circle cx="12" cy="19.3" r="1.1" fill="currentColor"/>',
+    gamepad: '<path d="M7 7h10a4 4 0 0 1 4 4l.6 4.6a2.6 2.6 0 0 1-4.6 2L15 15H9l-2 2.6a2.6 2.6 0 0 1-4.6-2L3 11a4 4 0 0 1 4-4z"/><path d="M7.5 10v3M6 11.5h3"/><circle cx="15.5" cy="10.5" r=".9" fill="currentColor"/><circle cx="17.5" cy="12.8" r=".9" fill="currentColor"/>',
+    speaker: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>',
+    mute: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/>',
+    play: '<path d="M7 5v14l11-7z"/>',
+    home: '<path d="M4 11l8-7 8 7M6.5 9.5V20h11V9.5"/>',
+    back: '<path d="M10 6l-6 6 6 6M4 12h16"/>',
+    up: '<path d="M6 15l6-6 6 6"/>', down: '<path d="M6 9l6 6 6-6"/>',
+    left: '<path d="M15 6l-6 6 6 6"/>', right: '<path d="M9 6l6 6-6 6"/>',
+    close: '<path d="M6 6l12 12M18 6L6 18"/>',
+    send: '<path d="M4 12l16-7-6 16-3-7z"/>',
+    info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.8v.4"/>',
+    replay: '<path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4h4"/>',
+    moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
+    alert: '<path d="M12 3l9.5 17h-19z"/><path d="M12 10v4.5M12 17.3v.2"/>',
+    bluetooth: '<path d="M7 7l10 10-5 5V2l5 5L7 17"/>',
+    headphones: '<path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="4.5" height="6.5" rx="1.5"/><rect x="16.5" y="14" width="4.5" height="6.5" rx="1.5"/>',
+    search: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
+    gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/><circle cx="12" cy="12" r="6.6"/>',
+    chevron: '<path d="M9 5l7 7-7 7"/>',
+    check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    lock: '<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>',
+    text: '<path d="M4 7V5h16v2M12 5v14M9 19h6"/>',
+    apps: '<rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/>',
+    download: '<path d="M12 4v11M7 10.5l5 5 5-5M5 20h14"/>',
+    eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
+    backspace: '<path d="M9 5h11v14H9l-6-7z"/><path d="M12.5 9.5l5 5M17.5 9.5l-5 5"/>',
+    shift: '<path d="M12 4l8 8h-4.5v7h-7v-7H4z"/>',
+    clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+    look: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/>',
+    pin: '<path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0 1 13 0c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>',
+    airplay: '<path d="M6 17H4.5A1.5 1.5 0 0 1 3 15.5v-10A1.5 1.5 0 0 1 4.5 4h15A1.5 1.5 0 0 1 21 5.5v10a1.5 1.5 0 0 1-1.5 1.5H18"/><path d="M12 14l5 6H7z"/>',
+    'wx-clear': '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>',
+    'wx-night': '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
+    'wx-partly': '<path d="M8 3v1.3M3.3 8h1.3M4.7 4.7l.9.9M11.3 4.7l-.9.9"/><path d="M5.2 10.9a3.2 3.2 0 0 1 5.6-3.4"/><path d="M9.5 20h8a3.5 3.5 0 0 0 .4-7 4.8 4.8 0 0 0-9.2 1.1A3 3 0 0 0 9.5 20z"/>',
+    'wx-cloudy': '<path d="M7.5 19h9.5a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.6 1.2A3.5 3.5 0 0 0 7.5 19z"/>',
+    'wx-fog': '<path d="M7.5 13h9.5a3.5 3.5 0 0 0 .4-7 5 5 0 0 0-9.7 1A3 3 0 0 0 7.5 13z"/><path d="M4 16.5h16M6.5 20h11"/>',
+    'wx-rain': '<path d="M7.5 15h9.5a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.6 1.2A3.5 3.5 0 0 0 7.5 15z"/><path d="M9 17.5l-1 3M13 17.5l-1 3M17 17.5l-1 3"/>',
+    'wx-snow': '<path d="M7.5 15h9.5a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.6 1.2A3.5 3.5 0 0 0 7.5 15z"/><path d="M8.5 18.5v.1M12 20.5v.1M15.5 18.5v.1"/>',
+    'wx-storm': '<path d="M7.5 15h9.5a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.6 1.2A3.5 3.5 0 0 0 7.5 15z"/><path d="M12.5 15.5l-2 3.2h3l-2 3.3"/>',
+    mouse: '<rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 7v3.5"/>',
+    qr: '<rect x="3" y="3" width="7" height="7" rx="1.2"/><rect x="14" y="3" width="7" height="7" rx="1.2"/><rect x="3" y="14" width="7" height="7" rx="1.2"/><path d="M14 14h2.5v2.5H14zM18.5 18.5H21V21h-2.5zM14 19.5V21M19.5 14H21"/>'
+  };
+  const icon = (n, cls = 'ic') => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n]}</svg>`;
+
+  let uid = 0;  // identifiants uniques des dégradés SVG
+  // Logo Scaros (kit officiel) : le S taillé dans une touche, deux fentes ambre.
+  // Le corps prend la couleur du texte (blanc sur fond sombre, Nuit sur fond clair).
+  const LOGO = {
+    body: 'M58 0 H166 C201.96 0 224 22.04 224 58 V59 H76 A17 17 0 0 0 76 93 H224 V166 C224 201.96 201.96 224 166 224 H58 C22.04 224 0 201.96 0 166 V165 H148 A17 17 0 0 0 148 131 H0 V58 C0 22.04 22.04 0 58 0 Z',
+    slotA: 'M224 57.8 H76 A18.2 18.2 0 0 0 76 94.2 H224 Z',
+    slotB: 'M0 166.2 H148 A18.2 18.2 0 0 0 148 129.8 H0 Z',
+    word: 'M71.78 186.65C99.46 186.65 119.30 172.86 119.30 151.01C119.30 134.57 109.01 124.81 86.84 120.15L66.69 116.01C57.36 114.0 51.84 109.86 51.84 103.18C51.84 95.54 59.06 89.60 70.83 89.60C83.03 89.60 91.19 96.92 91.40 106.89H116.54C115.90 83.87 97.34 69.56 70.19 69.56C42.83 69.56 25.12 83.45 25.12 104.03C25.12 121.0 36.36 131.92 57.78 136.37L76.87 140.30C86.31 142.31 92.15 146.24 92.15 153.03C92.15 160.98 84.30 166.60 71.36 166.60C58.0 166.60 50.15 160.34 48.98 149.42H22.57C24.27 173.5 44.53 186.65 71.78 186.65Z M186.07 186.54C214.39 186.54 234.96 168.30 236.87 143.80H210.46C207.92 156.21 200.39 164.27 186.39 164.27C168.78 164.27 158.39 150.16 158.39 128.10C158.39 105.93 168.89 91.72 186.39 91.72C200.28 91.72 208.66 100.10 210.68 112.09H236.87C234.54 87.16 214.18 69.45 186.07 69.45C153.30 69.45 131.34 93.53 131.34 128.10C131.34 162.68 153.30 186.54 186.07 186.54Z M287.95 185.80C306.19 185.80 315.63 178.16 320.93 168.19H321.36V184.0H347.66V107.63C347.66 84.30 330.37 69.77 301.21 69.77C271.93 69.77 253.69 84.51 252.42 106.78H278.19C278.93 97.34 287.63 90.56 300.68 90.56C313.51 90.56 321.15 97.34 321.15 106.89V107.74C321.15 115.37 314.04 115.69 293.25 118.03C270.13 120.46 249.24 126.72 249.24 152.18C249.24 174.56 265.68 185.80 287.95 185.80ZM294.53 165.96C282.86 165.96 275.33 160.77 275.33 151.96C275.33 141.78 285.09 137.65 296.54 135.95C307.57 134.25 317.96 132.56 321.25 130.43V142.53C321.25 155.57 312.03 165.96 294.53 165.96Z M370.31 184.0H397.04V120.57C397.04 103.07 406.90 94.27 419.63 94.27C424.93 94.27 430.24 94.80 432.25 95.12V71.36C430.13 71.15 427.16 70.93 423.56 70.93C409.13 70.93 400.54 77.72 396.40 90.56H396.09V72.0H370.31Z M496.69 186.54C529.68 186.54 551.95 162.89 551.95 128.10C551.95 93.31 529.68 69.45 496.69 69.45C463.71 69.45 441.43 93.31 441.43 128.10C441.43 162.89 463.71 186.54 496.69 186.54ZM496.69 164.16C479.40 164.16 468.48 150.48 468.48 128.10C468.48 105.62 479.51 91.83 496.69 91.83C513.77 91.83 524.80 105.72 524.80 128.10C524.80 150.37 513.87 164.16 496.69 164.16Z M613.31 186.65C641.0 186.65 660.83 172.86 660.83 151.01C660.83 134.57 650.54 124.81 628.37 120.15L608.22 116.01C598.89 114.0 593.37 109.86 593.37 103.18C593.37 95.54 600.59 89.60 612.36 89.60C624.56 89.60 632.72 96.92 632.93 106.89H658.07C657.43 83.87 638.87 69.56 611.72 69.56C584.36 69.56 566.65 83.45 566.65 104.03C566.65 121.0 577.89 131.92 599.31 136.37L618.40 140.30C627.84 142.31 633.68 146.24 633.68 153.03C633.68 160.98 625.83 166.60 612.89 166.60C599.53 166.60 591.68 160.34 590.51 149.42H564.10C565.80 173.5 586.06 186.65 613.31 186.65Z'
+  };
+  const symbolSVG = (cls = 'sym') => `<svg class="${cls}" viewBox="0 0 224 224" aria-hidden="true">`
+    + `<path class="sym-slot sym-slot-a" fill="#FF5A1F" d="${LOGO.slotA}"/><path class="sym-slot sym-slot-b" fill="#FF5A1F" d="${LOGO.slotB}"/>`
+    + `<path fill="currentColor" d="${LOGO.body}"/></svg>`;
+  // les deux fentes seules : le halo ambre du démarrage
+  const slotsSVG = (cls = 'slots') => `<svg class="${cls}" viewBox="0 0 224 224" aria-hidden="true">`
+    + `<path class="sym-slot sym-slot-a" fill="#FF6A2A" d="${LOGO.slotA}"/><path class="sym-slot sym-slot-b" fill="#FF6A2A" d="${LOGO.slotB}"/></svg>`;
+  const wordSVG = (cls = 'word') => `<svg class="${cls}" viewBox="22.58 69.45 638.26 117.2" aria-hidden="true"><path fill="currentColor" d="${LOGO.word}"/></svg>`;
+  // version horizontale (symbole + mot), proportions du kit
+  const lockupSVG = (cls = 'brand-logo') => `<svg class="${cls}" viewBox="0 0 924.84 224" aria-hidden="true">`
+    + `<path fill="#FF5A1F" d="${LOGO.slotA}"/><path fill="#FF5A1F" d="${LOGO.slotB}"/><path fill="currentColor" d="${LOGO.body}"/>`
+    + `<path fill="currentColor" transform="translate(264 -16)" d="${LOGO.word}"/></svg>`;
+  document.querySelectorAll('[data-logo]').forEach(el => {
+    el.innerHTML = { symbol: symbolSVG, slots: slotsSVG, word: wordSVG, lockup: lockupSVG }[el.dataset.logo]();
+  });
+  document.querySelectorAll('[data-icon]').forEach(el => { el.innerHTML = icon(el.dataset.icon) + el.innerHTML; });
+
+  // app artwork (drawn for the menu; the apps keep their own icons)
+  const ART = {
+    youtube: () => '<svg viewBox="0 0 28 20" aria-hidden="true"><rect width="28" height="20" rx="5.6" fill="#ff0033"/><path d="M11.2 5.6v8.8l7.6-4.4z" fill="#fff"/></svg>',
+    jellyfin: () => {
+      const g = 'jf' + (++uid);
+      return `<svg viewBox="20 18 483 483" aria-hidden="true"><defs><linearGradient id="${g}" x1="110.25" y1="213.3" x2="496.14" y2="436.09" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#aa5cc3"/><stop offset="1" stop-color="#00a4dc"/></linearGradient></defs>`
+        + `<path fill="url(#${g})" d="M261.42 201.62c-20.44 0-86.24 119.29-76.2 139.43s142.48 19.92 152.4 0S281.86 201.63 261.42 201.62z"/>`
+        + `<path fill="url(#${g})" d="M261.42 23.3C199.83 23.3 1.57 382.73 31.8 443.43s429.34 60 459.24 0S323 23.3 261.42 23.3zM411.9 390.76c-19.59 39.33-281.08 39.77-300.9 0S221.1 115.48 261.45 115.48 431.49 351.42 411.9 390.76z"/></svg>`;
+    },
+    plex: () => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 3.8h5.4l6 8.2-6 8.2H6.6l6-8.2z" fill="#ebaf00"/></svg>',
+    twitch: () => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.857 1.714h13.714v9.429l-3.428 3.428h-3.429l-3 3v-3H6.857z" fill="#fff"/><path fill="#9146ff" d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714z"/></svg>',
+    steamlink: () => '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="15" cy="9" r="3.7" fill="none" stroke="#fff" stroke-width="1.7"/><circle cx="15" cy="9" r="1.6" fill="#66c0f4"/><path d="M8.3 15.5l5-4.3" stroke="#fff" stroke-width="2.3" stroke-linecap="round"/><circle cx="8.1" cy="15.7" r="2.3" fill="#fff"/></svg>',
+    settings: () => '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.3" fill="none" stroke="#2c3038" stroke-width="3.6" stroke-dasharray="2.3 2.29"/><circle cx="12" cy="12" r="5.8" fill="#2c3038"/><circle cx="12" cy="12" r="2.5" fill="#c6cbd4"/></svg>'
+  };
+
+  // ---------- content ----------
+  const APPS = [
+    { id: 'youtube', ch: 1, name: 'YouTube', bg: 'linear-gradient(160deg, #ffffff, #e9ebef)', fg: '#0b0d12', a: '#ff2a3d', b: '#3d0710',
+      kicker: 'Vidéos', desc: 'L’interface TV de YouTube, pilotée à la manette, sans publicité.' },
+    { id: 'jellyfin', ch: 2, name: 'Jellyfin', bg: 'radial-gradient(120% 120% at 30% 15%, #1a2752, #070b18)', a: '#9b5cff', b: '#0a5a86',
+      kicker: 'Films et séries', desc: 'Ta médiathèque, lue depuis ton serveur Jellyfin.' },
+    { id: 'plex', ch: 3, name: 'Plex', bg: 'linear-gradient(160deg, #303236, #151618)', a: '#f2a516', b: '#4a2c00',
+      kicker: 'Médiathèque', desc: 'Tes films, séries et musique en plein écran avec Plex.' },
+    { id: 'steamlink', ch: 4, name: 'Steam Link', bg: 'linear-gradient(160deg, #2a475e, #1b2838 55%, #121821)', a: '#66c0f4', b: '#123049',
+      kicker: 'Jeux', desc: 'Tes jeux PC sur la télé. Maintiens le bouton Xbox pour revenir ici.' },
+    { id: 'twitch', ch: 5, name: 'Twitch', bg: 'linear-gradient(160deg, #a970ff, #7c3aed 55%, #5b21b6)', a: '#9146ff', b: '#2a1060',
+      kicker: 'Directs', desc: 'Les directs Twitch dans une interface pensée pour la télé.' }
+  ];
+  const SETTINGS_APP = { id: 'settings', name: 'Réglages', bg: 'linear-gradient(160deg, #a7adb8, #5d636e)', a: '#8fa0c4', b: '#232a3a',
+    kicker: 'Système', desc: 'Écran, son, Bluetooth, manette, télécommande et alimentation.' };
+  const DOCK = [...APPS, SETTINGS_APP];
+  const byId = Object.fromEntries(DOCK.map(t => [t.id, t]));
+  const AUDIO_NAMES = { tv: 'la télé (HDMI)', pc: 'les haut-parleurs du PC' };
+  const AUDIO_MODE = { auto: 'Auto', tv: 'Télé', pc: 'PC', bluetooth: 'Bluetooth' };
+  const BT_ICON = { audio: 'headphones', input: 'gamepad', other: 'bluetooth' };
+  const BT_KIND = { audio: 'Casque ou enceinte', input: 'Manette', other: 'Appareil Bluetooth' };
+
+  const state = {
+    live: false, dry: false, version: '0.7', lost: false, mouse: false,
+    focus: APPS[0].id, panel: null, pItems: [], pIdx: 0, panelStack: [], launched: null,
+    mode: 'auto', hdmi: false, output: 'pc', volume: 35, muted: false, booting: false, power: null,
+    res: '1366×768', tvRes: '1080', shown: false,
+    installed: {}, pad: null, padSupport: false, phones: 0, phoneDemo: false,
+    remoteUrl: 'http://scaros.local:8421/remote', qr: false, localName: 'scaros.local', wifi: null, ip: null, info: null,
+    audio: { mode: 'auto', target: 'pc', device: 'les haut-parleurs du PC' },
+    bt: { devices: [], scanning: false }, btSel: null,
+    wifiList: [
+      { ssid: 'Freebox-3A2C1F', signal: 82, secure: true, known: true, active: true },
+      { ssid: 'Livebox-9F10', signal: 61, secure: true, known: false, active: false },
+      { ssid: 'Wifi invités', signal: 47, secure: false, known: false, active: false },
+      { ssid: 'Bbox-55AA12', signal: 38, secure: true, known: false, active: false }
+    ],
+    wifiScanning: false, wifiSel: null, pw: '', pwShow: false, kbMode: 'abc', kbShift: false,
+    prefs: { textScale: 'normal', autoSleep: 0, theme: 'dark', bg: 'weather', saver: 5 }, appsUpdating: false,
+    saver: false, saverScene: null,
+    // maquette : valeurs d'exemple (sur le PC, elles viennent du serveur)
+    weather: { city: 'Paris', temp: 14, kind: 'rain', label: 'Pluie', day: true, max: 16, min: 9 },
+    place: { city: 'Paris', auto: true },
+    airplay: { enabled: true, available: true, state: 'idle', device: null, name: 'Scaros', running: true, advertised: true, error: null, checking: false },
+    update: { available: false, checking: false, running: false, step: null, checked: Date.now() / 1000, disabled: true },
+    diag: { running: false, step: null, until: null, at: null }, diagReport: '',
+    cityQuery: '', cityResults: null
+  };
+  let lastInputAt = Date.now(), lastWifiScan = 0;
+  let audioReady = false, displayToastAt = 0, lastOut = 'pc';
+  const computeOutput = () => state.mode === 'pc' ? 'pc' : (state.hdmi ? 'tv' : 'pc');
+
+  $('#icons').style.setProperty('--n', Math.ceil(DOCK.length / 2));  // deux rangées
+  $('#icons').innerHTML = DOCK.map(t => `<button type="button" class="icon" role="listitem" id="t-${t.id}" data-id="${t.id}" tabindex="-1" aria-label="${t.name}" style="--glow:${t.a}">`
+    + `<span class="icon-art" style="--bg:${t.bg}">${ART[t.id]()}<span class="badge" hidden>À installer</span></span>`
+    + `<span class="icon-name">${t.name}</span></button>`).join('');
+  $('#shelf').innerHTML = DOCK.map(t => `<div class="scene" data-id="${t.id}" style="--a:${t.a};--b:${t.b}"><div class="scene-art">${ART[t.id]()}</div></div>`).join('');
+  const tiles = [...document.querySelectorAll('.icon')];
+  const scenes = [...document.querySelectorAll('.scene')];
+
+  const stage = $('#stage'), pane = $('#pane'), scrim = $('#scrim'), L = $('#launch'),
+        B = $('#boot'), OFF = $('#off'), T = $('#toast'), V = $('#vol'), P = $('#phone');
+
+  // ---------- backend ----------
+  function api(path, body) {
+    const opts = body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+    return fetch(path, { cache: 'no-store', ...opts }).then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))));
+  }
+  function applyState(s) {
+    Object.assign(state, {
+      live: true, dry: !!s.dry, version: s.version, mode: s.mode, hdmi: s.hdmi, output: s.output,
+      res: s.res || null, tvRes: s.tvRes || '1080',
+      pad: s.pad, padSupport: !!s.padSupport, volume: s.volume ?? state.volume, muted: !!s.muted,
+      phones: s.remote ? s.remote.phones : 0, remoteUrl: s.remote ? s.remote.url : state.remoteUrl,
+      qr: !!(s.remote && s.remote.qr), localName: (s.remote && s.remote.name) || null, wifi: s.wifi, ip: s.ip, info: s.info || null,
+      audio: s.audio && s.audio.target ? s.audio : state.audio, bt: s.bt || state.bt,
+      wifiList: s.wifiList || [], prefs: { ...state.prefs, ...(s.prefs || {}) },
+      weather: s.weather || null, place: s.place || null, airplay: s.airplay || state.airplay, update: s.update || state.update, diag: s.diag || state.diag,
+      mouse: !!s.mouse,
+      installed: Object.fromEntries(Object.entries(s.apps || {}).map(([k, v]) => [k, v.installed]))
+    });
+    lastOut = state.output;
+    applyPrefs();
+  }
+  // Ouvert depuis le PC (port 8421) : si le serveur tarde à démarrer, on l'attend au lieu de
+  // passer en maquette. Ailleurs (aperçu, fichier), pas de serveur : maquette tout de suite.
+  const onBox = location.port === '8421' || /^(127\.0\.0\.1|localhost|scaros(\.local)?)$/.test(location.hostname);
+  let lostTimer = null, lostToast = false, firstState = null;
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  async function connect() {
+    if (location.protocol === 'file:') return false;
+    for (let i = 0; onBox || i < 1; i++) {  // sur le PC : on attend le serveur aussi longtemps qu'il faut
+      try {
+        const s = await api('/api/state');
+        if (!s || !s.version || !s.apps) return false;
+        if (lostToast) { lostToast = false; T.classList.remove('on'); }
+        applyState(s);
+        firstState = s;
+        if (s.justUpdated) setTimeout(() => {
+          toast('download', s.justUpdated, 9000);
+          api('/api/update/ack', {}).catch(() => {});
+        }, 3600);
+        return true;
+      } catch (e) {
+        // sur le PC, le serveur peut démarrer ou redémarrer (mise à jour) : on l'attend, quelle que
+        // soit l'erreur ; ailleurs (aperçu, fichier), pas de serveur : maquette tout de suite
+        if (!onBox) return false;
+        if (i === 3) { lostToast = true; toast('alert', 'Démarrage du serveur Scaros…', 120000); }
+        await wait(1000);
+      }
+    }
+    return false;
+  }
+  function listen() {
+    const es = new EventSource('/api/events');
+    es.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch (err) { return; } onEvent(m); };
+    es.onerror = () => {
+      if (state.lost) return;
+      state.lost = true;
+      clearTimeout(lostTimer);
+      lostTimer = setTimeout(() => { lostToast = true; toast('alert', 'Connexion au serveur Scaros perdue… reconnexion.', 120000); }, 4000);
+    };
+    es.onopen = () => {
+      clearTimeout(lostTimer);
+      if (!state.lost) return;
+      state.lost = false;
+      if (lostToast) { lostToast = false; T.classList.remove('on'); }
+      api('/api/state').then(s => { applyState(s); syncApp(s); renderAll(); }).catch(() => {});
+    };
+  }
+  // menu rechargé (ou serveur relancé) pendant qu'une appli est ouverte : on le reflète
+  function syncApp(s) {
+    if (s.app && byId[s.app] && state.launched !== s.app) {
+      openOverlay(s.app, true);
+      if (s.shown) appShown(s.app);
+      api('/api/resume', {}).catch(() => {});
+    } else if (!s.app && state.launched) closeLaunch(false);
+  }
+  function onEvent(m) {
+    if (m.type === 'app') onApp(m);
+    else if (m.type === 'home') { if (!stopSaver()) { poke(); goHome(); } }
+    else if (m.type === 'menu') { if (!stopSaver()) { poke(); toggleControl(); } }
+    else if (m.type === 'display') {
+      Object.assign(state, { mode: m.mode, hdmi: m.hdmi, output: m.output, res: m.res || null, tvRes: m.tvRes || state.tvRes });
+      applyOutput();
+      rerenderPane();
+    } else if (m.type === 'pad') {
+      const was = state.pad;
+      state.pad = m.name;
+      renderStatus();
+      if (m.name && !was) toast('gamepad', /xbox/i.test(m.name) ? 'Manette Xbox connectée.' : 'Manette connectée.');
+      else if (!m.name && was) toast('gamepad', 'Manette déconnectée.');
+      rerenderPane();
+    } else if (m.type === 'volume') {
+      if (m.level != null) state.volume = m.level;
+      state.muted = !!m.muted;
+      if (!m.quiet && m.level != null) showVol();
+      renderStatus();
+      if (state.panel === 'sound' || state.panel === 'control') rerenderPane();
+    } else if (m.type === 'remote') {
+      const more = m.phones > state.phones;
+      state.phones = m.phones;
+      renderStatus();
+      if (more) toast('phone', 'Téléphone connecté.');
+      rerenderPane();
+    } else if (m.type === 'audio') {
+      onAudio(m);
+    } else if (m.type === 'bt') {
+      state.bt = { devices: m.devices || [], scanning: !!m.scanning, audio: m.audio ?? state.bt.audio };
+      rerenderPane();
+    } else if (m.type === 'btmsg') {
+      btToast(m.state, m.name, m.paired);
+      // échec sur un appareil : on ouvre sa fiche (réessayer, oublier)
+      if (['failed', 'unreachable', 'repair'].includes(m.state) && m.mac && state.panel === 'bluetooth') { state.btSel = m.mac; openPanel('btdevice'); }
+    } else if (m.type === 'wifi') {
+      Object.assign(state, { wifiList: m.networks || [], wifiScanning: !!m.scanning, wifi: m.current, ip: m.ip || state.ip });
+      renderStatus();
+      rerenderPane();
+    } else if (m.type === 'wifimsg') {
+      wifiToast(m.state, m.ssid);
+    } else if (m.type === 'appsmsg') {
+      state.appsUpdating = m.state === 'updating';
+      toast(m.state === 'failed' ? 'alert' : 'download', { updating: 'Mise à jour des applis… ça peut prendre quelques minutes.', done: 'Applis à jour.', failed: 'La mise à jour des applis a échoué.' }[m.state], m.state === 'updating' ? 20000 : 4000);
+      api('/api/state').then(s => { applyState(s); renderTiles(); rerenderPane(); }).catch(() => {});
+    } else if (m.type === 'mouse') {
+      onMouse(!!m.on);
+    } else if (m.type === 'airplay') {
+      const was = state.airplay.state;
+      state.airplay = { ...state.airplay, ...m };
+      onAirplay(was);
+    } else if (m.type === 'weather') {
+      state.weather = m.weather || null; state.place = m.place || state.place;
+      applySky(); renderStatus();
+      if (state.focus === 'settings') renderShelf();
+      rerenderPane();
+    } else if (m.type === 'update') {
+      const was = state.update.step;
+      state.update = { ...state.update, ...m };
+      if (m.step !== was && m.step === 'failed') toast('alert', 'La mise à jour de Scaros a échoué. Vérifie la connexion, puis réessaie.', 6000);
+      if (m.step !== was && m.step === 'done') toast('download', 'Mise à jour installée. L’écran redémarre…', 15000);
+      rerenderPane();
+      if (state.focus === 'settings') renderShelf();
+    } else if (m.type === 'diag') {
+      const was = state.diag.step;
+      state.diag = { ...state.diag, ...m };
+      if (m.step !== was && m.step === 'done') {
+        loadDiag();
+        if (state.panel !== 'netdiag') toast('search', 'Diagnostic réseau terminé : Réglages › Wi-Fi › Diagnostic réseau.', 6000);
+      }
+      if (m.step !== was && m.step === 'failed') toast('alert', 'Le diagnostic réseau n’a pas pu se lancer. Mets à jour Scaros, puis réessaie.', 6000);
+      diagTick();
+      if (state.panel === 'netdiag') rerenderPane();
+    } else if (m.type === 'prefs') {
+      state.prefs = { ...state.prefs, ...(m.prefs || {}) };
+      applyPrefs();
+      rerenderPane();
+    } else if (m.type === 'pair') {
+      const msg = {
+        scanning: ['gamepad', 'Recherche de la manette… Maintiens son bouton d’appairage 3 secondes.', 30000],
+        notfound: ['alert', 'Aucune manette trouvée. Réessaie depuis Réglages › Manette.'],
+        failed: ['alert', 'L’appairage a échoué. Réessaie depuis Réglages › Manette.'],
+        done: ['gamepad', `Manette appairée${m.name ? ' : ' + m.name : ''}.`]
+      }[m.state];
+      if (msg) toast(...msg);
+    }
+  }
+  function onApp(m) {
+    const t = byId[m.id];
+    if (!t) return;
+    if (m.state === 'running') stopSaver();  // appli lancée depuis le téléphone : elle s'ouvre directement
+    if (m.state === 'running') { if (state.launched !== m.id) openOverlay(m.id); }
+    else if (m.state === 'shown') { if (state.launched === m.id) appShown(m.id); }
+    else if (m.state === 'closed') { if (state.launched === m.id) closeLaunch(false); }
+    else {
+      if (state.launched === m.id) closeLaunch(false);
+      if (m.state === 'missing') { state.installed[m.id] = false; renderTiles(); }
+      toast('alert', m.state === 'missing'
+        ? `${t.name} n’est pas installé. Relance update.sh pour l’ajouter.`
+        : m.state === 'offline'
+          ? `${t.name} ne répond pas. Vérifie la connexion internet.`
+          : `${t.name} n’a pas pu démarrer.`, 6000);
+    }
+  }
+
+  // ---------- shelf & status ----------
+  function shelfChips(t) {
+    if (t.id === 'settings' && state.update.available) return ['!Mise à jour de Scaros disponible', `Image sur ${state.output === 'tv' ? 'la télé' : 'l’écran du PC'}`];
+    if (t.id === 'settings') return [`Image sur ${state.output === 'tv' ? 'la télé' : 'l’écran du PC'}`, `Son sur ${state.audio.device}`];
+    if (state.live && state.installed[t.id] === false) return ['!À installer : relance update.sh'];
+    return t.id === 'twitch' ? ['SmartTwitchTV, appli non officielle'] : [];
+  }
+  function renderShelf() {
+    const t = byId[state.focus];
+    scenes.forEach(s => s.classList.toggle('on', s.dataset.id === t.id));
+    $('#sh-kicker').textContent = t.kicker;
+    $('#sh-title').textContent = t.name;
+    $('#sh-desc').textContent = t.desc;
+    $('#sh-chips').innerHTML = shelfChips(t).map(c => c.startsWith('!') ? `<li class="warn">${esc(c.slice(1))}</li>` : `<li>${esc(c)}</li>`).join('');
+    const info = $('#shelf-info');
+    info.classList.remove('in'); void info.offsetWidth; info.classList.add('in');
+  }
+  function renderStatus() {
+    const so = $('#st-out'), tvOut = state.output === 'tv';
+    so.innerHTML = icon(tvOut ? 'tv' : 'laptop');
+    so.hidden = true;
+    so.title = tvOut ? 'Image sur la télé' : 'Image sur l’écran du PC';
+    $('#st-pad').hidden = !state.pad;
+    $('#st-phone').hidden = !(state.live ? state.phones > 0 : state.phoneDemo);
+    $('#st-mute').hidden = !state.muted;
+    $('#st-airplay').hidden = !mirroring();
+    const wx = $('#st-wx'), w = state.weather;
+    wx.hidden = !w;
+    if (w) { wx.innerHTML = `${icon(wxIcon(w))}<span>${w.temp}°</span>`; wx.title = `${w.label} · ${w.city || ''}`; }
+    const capIcons = [...document.querySelectorAll('.cap-icons .st')].some(el => !el.hidden);
+    document.querySelector('.capsule').classList.toggle('has-icons', capIcons);
+    $('#wx-cap').textContent = w ? `${w.label}${w.max != null ? ` · max ${w.max}°` : ''}${w.city ? ` · ${w.city}` : ''}` : '';
+    $('#sleep-wx').innerHTML = w ? wxLine(w, true) : '';
+    const sa = $('#st-audio');
+    sa.hidden = state.audio.target !== 'bt';
+    sa.title = `Son sur ${state.audio.device}`;
+    const sw = $('#st-wifi'), cur = wifiCurrent();
+    sw.hidden = !!cur;
+    $('#ver').textContent = state.live ? `Scaros OS ${state.version}${state.dry ? ' · test' : ''}` : 'Scaros OS · maquette';
+  }
+  function renderTiles() {
+    tiles.forEach(el => { el.querySelector('.badge').hidden = !(state.live && state.installed[el.dataset.id] === false); });
+  }
+  const G = {
+    a: '<span class="bg g-a">A</span>', b: '<span class="bg g-b">B</span>',
+    menu: '<span class="bg g-menu">≡</span>', num: `<span class="bg g-num">1–${APPS.length}</span>`
+  };
+  function updateHints() {
+    const h = (g, t) => `<span class="hint">${g}${t}</span>`;
+    $('#hints').innerHTML = state.panel
+      ? h(G.a, 'Choisir') + h(G.b, state.panelStack.length ? 'Retour' : 'Fermer')
+      : h(G.a, 'Ouvrir') + h(G.menu, 'Centre de contrôle') + h(G.num, 'Accès direct');
+  }
+  function renderAll() {
+    renderStatus(); renderTiles(); updateHints(); renderShelf();
+    rerenderPane();
+  }
+
+  // ---------- focus & navigation ----------
+  function setFocus(id, takeDom = true) {
+    const changed = id !== state.focus;
+    state.focus = id;
+    tiles.forEach(el => { const on = el.dataset.id === id; el.classList.toggle('is-focus', on); el.tabIndex = on ? 0 : -1; });
+    const el = $('#t-' + id);
+    if (takeDom && !state.panel && !state.launched && document.activeElement !== el) el.focus({ preventScroll: true });
+    if (portrait()) el.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+    if (changed || !$('#sh-desc').textContent) renderShelf();
+  }
+  function nearest(from, dir, list = tiles) {
+    const a = from.getBoundingClientRect(), ax = a.left + a.width / 2, ay = a.top + a.height / 2;
+    let best = null, score = Infinity;
+    for (const el of list) {
+      if (el === from) continue;
+      const b = el.getBoundingClientRect(), dx = b.left + b.width / 2 - ax, dy = b.top + b.height / 2 - ay;
+      let main, cross;
+      if (dir === 'right') { if (dx <= 4) continue; main = dx; cross = Math.abs(dy); }
+      else if (dir === 'left') { if (dx >= -4) continue; main = -dx; cross = Math.abs(dy); }
+      else if (dir === 'down') { if (dy <= 4) continue; main = dy; cross = Math.abs(dx); }
+      else { if (dy >= -4) continue; main = -dy; cross = Math.abs(dx); }
+      if ((dir === 'left' || dir === 'right') && cross > a.height * .6) continue;
+      const s = main + cross * 2.2;
+      if (s < score) { score = s; best = el; }
+    }
+    return best;
+  }
+  function move(dir) {
+    const from = $('#t-' + state.focus), next = nearest(from, dir);
+    if (next) return setFocus(next.dataset.id);
+    from.style.setProperty('--bx', dir === 'left' ? '-.6rem' : dir === 'right' ? '.6rem' : '0');
+    from.classList.remove('bump'); void from.offsetWidth; from.classList.add('bump');
+    setTimeout(() => from.classList.remove('bump'), 340);
+  }
+
+  // ---------- Réglages & centre de contrôle ----------
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const radio = (act, title, desc, checked, disabled) =>
+    `<button type="button" class="opt" role="radio" aria-checked="${checked}" data-act="${act}"${disabled ? ' disabled' : ''}><span class="opt-main"><span class="opt-title">${title}</span>${desc ? `<span class="opt-desc">${desc}</span>` : ''}</span>${icon('check', 'check')}</button>`;
+  const row = (act, ic, title, desc, val = '') => {
+    const nav = /^(panel|btdev):/.test(act);
+    return `<button type="button" class="opt" data-act="${act}">${ic ? icon(ic) : ''}<span class="opt-main"><span class="opt-title">${title}</span>${desc ? `<span class="opt-desc">${desc}</span>` : ''}</span>${val ? `<span class="opt-val">${val}</span>` : ''}${nav ? icon('chevron', 'chev') : ''}</button>`;
+  };
+  const quick = (act, ic, title, on) => `<button type="button" class="opt q${on ? ' on' : ''}" data-act="${act}"${on != null ? ` aria-pressed="${!!on}"` : ''}>${icon(ic)}<span class="opt-title">${title}</span></button>`;
+  const group = t => `<p class="opt-group">${t}</p>`;
+
+  let qrLib = null;
+  function loadQrLib() {
+    if (qrLib) return qrLib;
+    qrLib = new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+    return qrLib;
+  }
+  function qrSVG(text) {
+    if (typeof qrcode !== 'function') return '';
+    try {
+      const q = qrcode(0, 'M'); q.addData(text); q.make();
+      const n = q.getModuleCount(); let d = '';
+      for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += `M${c} ${r}h1v1h-1z`;
+      return `<svg viewBox="-2 -2 ${n + 4} ${n + 4}" shape-rendering="crispEdges" role="img" aria-label="QR code vers ${esc(text)}"><rect x="-2" y="-2" width="${n + 4}" height="${n + 4}" fill="#ffffff"/><path d="${d}" fill="#06080c"/></svg>`;
+    } catch (e) { return ''; }
+  }
+  const btAudioDevice = () => state.bt.devices.find(d => d.connected && d.kind === 'audio');
+  function btSummary() {
+    const n = state.bt.devices.filter(d => d.connected).length;
+    return n ? `${n} connecté${n > 1 ? 's' : ''}` : 'Aucun';
+  }
+  const outputLabel = () => state.output === 'tv' ? 'Télé' : 'Écran du PC';
+  // ligne Volume : gauche/droite pour régler, A pour couper le son
+  const volRow = short => `<button type="button" class="opt" data-act="vol" data-adjust="vol">${icon(state.muted ? 'mute' : 'speaker')}<span class="opt-main"><span class="opt-title">Volume</span><span class="opt-desc">${state.muted ? 'Son coupé · A pour le remettre' : short ? 'A : couper le son' : 'Gauche, droite pour régler · A pour couper'}</span></span><span class="meter"><i style="width:${state.muted ? 0 : state.volume ?? 0}%"></i></span><span class="opt-val">${state.muted ? 'Muet' : `${state.volume ?? '—'} %`}</span></button>`;
+  const RES_DEMO = { 1080: '1920×1080', 720: '1280×720', max: '3840×2160' };
+  const shortAudio = () => state.audio.target === 'bt' ? state.audio.device : state.audio.target === 'tv' ? 'Télé' : 'PC';
+  function fmtUptime(s) {
+    if (!s) return '—';
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+    return h ? `${h} h ${String(m).padStart(2, '0')}` : `${m} min`;
+  }
+
+  const wifiCurrent = () => state.live ? state.wifi : (state.wifiList.find(n => n.active) || {}).ssid;
+  const phonesCount = () => state.live ? state.phones : (state.phoneDemo ? 1 : 0);
+  const TEXT_LABEL = { normal: 'Texte normal', large: 'Texte grand', xlarge: 'Texte très grand' };
+  const LOOK_LABEL = { dark: 'Sombre', light: 'Clair', auto: 'Automatique' };
+  const sigBars = v => `<span class="signal" aria-label="Signal ${v} %">${[1, 35, 55, 75].map(t => `<i class="${v >= t ? 'on' : ''}"></i>`).join('')}</span>`;
+  function appsSummary() {
+    const n = APPS.filter(a => !(state.live && state.installed[a.id] === false)).length;
+    return `${n} installée${n > 1 ? 's' : ''}`;
+  }
+  // clavier à l'écran : AZERTY, chiffres, symboles
+  const KB = {
+    abc: [['a', 'z', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'], ['q', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'm'],
+          ['⇧', 'w', 'x', 'c', 'v', 'b', 'n', "'", '-', '⌫'], ['123', ' ', '@', '.', 'OK']],
+    num: [['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'], ['!', '?', '#', '$', '%', '&', '*', '(', ')', '='],
+          ['#+=', '_', '/', ':', ';', ',', '"', '+', '⌫'], ['abc', ' ', '@', '.', 'OK']],
+    sym: [['[', ']', '{', '}', '<', '>', '~', '|', '\\', '^'], ['é', 'è', 'à', 'ç', 'ù', 'ê', 'â', 'ô', 'î', 'ë'],
+          ['123', '€', '£', '°', '§', '`', '«', '»', '⌫'], ['abc', ' ', '@', '.', 'OK']]
+  };
+  // le même clavier sert au mot de passe Wi-Fi et à la recherche de ville
+  const KBT = {
+    wifipass: { get: () => state.pw, set: v => { state.pw = v.slice(0, 63); }, ok: 'Se connecter', submit: () => submitPassword() },
+    citysearch: { get: () => state.cityQuery, set: v => { state.cityQuery = v.slice(0, 40); }, ok: 'Rechercher', submit: () => submitCity() }
+  };
+  function keyboardHTML() {
+    return `<div class="kb">${KB[state.kbMode].map((r, ri) => `<div class="kb-row">${r.map((k, ci) => {
+      const act = `kb:${ri}:${ci}`;
+      if (k === '⇧') return `<button type="button" class="kb-key alt w2 ${state.kbShift ? 'on' : ''}" data-act="${act}" aria-label="Majuscule">${icon('shift')}</button>`;
+      if (k === '⌫') return `<button type="button" class="kb-key alt w2" data-act="${act}" aria-label="Effacer">${icon('backspace')}</button>`;
+      if (k === '123' || k === 'abc' || k === '#+=') return `<button type="button" class="kb-key alt w2" data-act="${act}">${k}</button>`;
+      if (k === ' ') return `<button type="button" class="kb-key alt w5" data-act="${act}">espace</button>`;
+      if (k === 'OK') return `<button type="button" class="kb-key go w3" data-act="${act}">${(KBT[state.panel] || KBT.wifipass).ok}</button>`;
+      return `<button type="button" class="kb-key" data-act="${act}">${esc(state.kbShift ? k.toUpperCase() : k)}</button>`;
+    }).join('')}</div>`).join('')}</div>`;
+  }
+  function typeChar(ch) {
+    const t = KBT[state.panel] || KBT.wifipass;
+    t.set(t.get() + ch);
+    if (state.kbShift) state.kbShift = false;
+  }
+  function eraseChar() { const t = KBT[state.panel] || KBT.wifipass; t.set(t.get().slice(0, -1)); }
+  function submitPassword() {
+    const net = state.wifiList.find(n => n.ssid === state.wifiSel);
+    if (net && net.secure && state.pw.length < 8) return toast('lock', 'Un mot de passe Wi-Fi fait au moins 8 caractères.');
+    const ssid = state.wifiSel, pw = state.pw;
+    state.pw = ''; state.pwShow = false;
+    backPanel();
+    wifiConnect(ssid, pw);
+  }
+  function pressKey(r, c) {
+    const k = KB[state.kbMode][r] && KB[state.kbMode][r][c];
+    if (k === undefined) return;
+    if (k === '⇧') state.kbShift = !state.kbShift;
+    else if (k === '⌫') eraseChar();
+    else if (k === '123') { state.kbMode = 'num'; state.kbShift = false; }
+    else if (k === 'abc') state.kbMode = 'abc';
+    else if (k === '#+=') state.kbMode = 'sym';
+    else if (k === 'OK') return (KBT[state.panel] || KBT.wifipass).submit();
+    else typeChar(state.kbShift ? k.toUpperCase() : k);
+    renderPanel(`kb:${r}:${c}`);
+  }
+  function pwShown() {
+    const p = state.pwShow ? state.pw : '•'.repeat(state.pw.length);
+    return p.length > 30 ? '…' + p.slice(-30) : p;
+  }
+
+  // rapport de scaros-diag : « == Rubrique == », puis « [ok] … », « [!!] … » ou une ligne d'info
+  function parseDiag(text) {
+    if (!text) return null;
+    const secs = []; let cur = null;
+    for (const raw of text.split('\n')) {
+      const m = raw.match(/^== (.*) ==$/);
+      if (m) { cur = { title: m[1], lines: [] }; secs.push(cur); continue; }
+      const t = raw.trim();
+      if (!cur || !t) continue;
+      const kind = t.startsWith('[ok]') ? 'ok' : t.startsWith('[!!]') ? 'bad' : 'inf';
+      cur.lines.push({ kind, text: kind === 'inf' ? t : t.slice(4).trim() });
+    }
+    const verdict = secs.find(x => x.title === 'Verdict');
+    return { verdict, secs: secs.filter(x => x !== verdict) };
+  }
+  const cap1 = t => t.charAt(0).toUpperCase() + t.slice(1);
+  const diagLine = l => `<p class="diag-l ${l.kind}">${l.kind === 'ok' ? icon('check') : l.kind === 'bad' ? icon('alert') : ''}<span>${esc(cap1(l.text))}</span></p>`;
+  const diagLeft = () => Math.max(0, Math.round((state.diag.until || 0) - Date.now() / 1000));
+  let diagTimer = null;
+  function diagTick() {  // compte à rebours pendant l'écoute, sans redessiner la page
+    clearInterval(diagTimer); diagTimer = null;
+    if (!(state.diag.running && state.diag.step === 'listen')) return;
+    diagTimer = setInterval(() => {
+      if (!(state.diag.running && state.diag.step === 'listen')) { clearInterval(diagTimer); diagTimer = null; return; }
+      const el = document.getElementById('diag-count');
+      if (el) el.textContent = `${diagLeft()} s`;
+    }, 500);
+  }
+  function loadDiag() {
+    if (!state.live) return;
+    api('/api/diag').then(r => {
+      state.diagReport = r.report || '';
+      state.diag = { ...state.diag, at: r.at || state.diag.at };
+      if (state.panel === 'netdiag') rerenderPane();
+    }).catch(() => {});
+  }
+  const DEMO_DIAG = `== Connexion ==
+       Wi-Fi (wlp3s0) : adresse 192.168.1.11 sur « TP-Link_2G », 2,4 GHz, signal -52 dBm
+  [ok] économie d'énergie Wi-Fi coupée
+== Box ==
+  [ok] la box (192.168.1.1) répond (5/5)
+== Adresse en double ==
+  [ok] aucun autre appareil n'utilise 192.168.1.11
+== Test en direct ==
+  [ok] 192.168.1.24 (iPhone-de-Sam.local) : connexion établie (télécommande)
+== AirPlay (découverte par l'iPhone) ==
+       Scaros reçoit bien les annonces Bonjour de 4 appareil(s) du réseau
+  [!!] aucune recherche AirPlay n'est arrivée (si tu as ouvert « Recopie de l'écran » sur l'iPhone pendant le test) : l'iPhone n'est sans doute pas sur le même Wi-Fi ou la même bande que Scaros. Mets-les tous les deux sur le Wi-Fi 2,4 GHz du même boîtier
+== Verdict ==
+  [!!] aucune recherche AirPlay n'est arrivée (si tu as ouvert « Recopie de l'écran » sur l'iPhone pendant le test) : l'iPhone n'est sans doute pas sur le même Wi-Fi ou la même bande que Scaros. Mets-les tous les deux sur le Wi-Fi 2,4 GHz du même boîtier`;
+
+  // each page: title, art (left illustration), lead, body
+  const PAGES = {
+    settings: () => ({
+      title: 'Réglages', art: 'settings', pa: '#a7adb8', pb: '#5d636e', caption: 'Tout se règle à la manette.',
+      body: `${group('Connexions')}<div class="opts">
+          ${row('panel:wifi', 'wifi', 'Wi-Fi', '', esc(wifiCurrent() || 'Non connecté'))}
+          ${row('panel:bluetooth', 'bluetooth', 'Bluetooth', '', btSummary())}
+          ${row('panel:remote', 'phone', 'Télécommande', '', phonesCount() ? 'Connectée' : '')}
+          ${row('panel:airplay', 'airplay', 'AirPlay', '', !state.airplay.available ? 'À installer' : !state.airplay.enabled ? 'Désactivé' : mirroring() ? 'Recopie en cours' : state.airplay.error ? 'Ne démarre pas' : state.airplay.advertised === false ? 'Invisible' : 'Activé')}
+        </div>
+        ${group('Image et son')}<div class="opts">
+          ${row('panel:display', 'display', 'Écran', '', outputLabel())}
+          ${row('panel:sound', 'speaker', 'Son', '', esc(shortAudio()))}
+          ${row('panel:general', 'look', 'Affichage et veille', '', LOOK_LABEL[state.prefs.theme] || 'Sombre')}
+          ${row('panel:ambiance', wxIcon(state.weather), 'Fond et météo', '', esc(BG_LABEL[state.prefs.bg || 'weather']))}
+        </div>
+        ${group('Appareil')}<div class="opts">
+          ${row('panel:controller', 'gamepad', 'Manette', '', state.pad ? 'Connectée' : 'Non connectée')}
+          ${row('panel:apps', 'apps', 'Applis', '', appsSummary())}
+          ${state.update.disabled ? '' : row('panel:update', 'download', 'Mise à jour de Scaros', '', state.update.running ? 'En cours' : state.update.available ? 'Disponible' : '')}
+          ${row('panel:power', 'power', 'Alimentation', '')}
+          ${row('panel:about', 'info', 'À propos', '')}
+        </div>`
+    }),
+    display: () => ({
+      title: 'Écran', icon: 'display', pa: '#4c8dff', pb: '#1d3b8a', caption: 'Branche la télé en HDMI : l’image y passe toute seule.',
+      lead: 'Choisis où s’affiche Scaros. Le son suit l’image, sauf si tu choisis une autre sortie dans Son.',
+      body: `<div class="card"><span class="sdot ${state.hdmi ? 'on' : ''}"></span><div><div class="card-title">Télé (HDMI) : ${state.hdmi ? 'branchée' : 'non branchée'}</div><div class="card-sub">Image sur ${state.output === 'tv' ? 'la télé' : 'l’écran du PC'}${state.res ? ` · ${esc(state.res)}` : ''}</div></div></div>
+        <div class="opts" role="radiogroup" aria-label="Où afficher Scaros">
+          ${radio('mode:auto', 'Auto', 'Passe sur la télé dès que le HDMI est branché, revient sur le PC quand tu le débranches.', state.mode === 'auto')}
+          ${radio('mode:pc', 'Écran du PC', 'Reste sur l’écran du portable, même si la télé est branchée.', state.mode === 'pc')}
+          ${radio('mode:tv', 'Télé (HDMI)', state.hdmi ? 'L’image passe sur la télé, l’écran du PC s’éteint.' : 'Branche le câble HDMI pour la choisir.', state.mode === 'tv', !state.hdmi)}
+        </div>
+        ${group('Définition sur la télé')}
+        <div class="opts" role="radiogroup" aria-label="Définition sur la télé">
+          ${radio('res:1080', '1080p · recommandé', 'Image nette, et le PC reste fluide même sur une télé 4K.', state.tvRes === '1080')}
+          ${radio('res:720', '720p', 'Plus fluide si les vidéos ou les menus saccadent.', state.tvRes === '720')}
+          ${radio('res:max', 'Maximum de la télé', 'Sur une télé 4K, ce PC risque de ramer.', state.tvRes === 'max')}
+        </div>
+        ${state.live && !state.dry ? '' : `${group('Démo')}<div class="opts">${row('hdmi', 'tv', `${state.hdmi ? 'Débrancher' : 'Brancher'} le câble HDMI`, 'Simule la télé pour voir la bascule. Raccourci : <kbd>H</kbd>')}</div>`}`
+    }),
+    sound: () => {
+      const btDev = btAudioDevice();
+      return {
+        title: 'Son', icon: 'speaker', pa: '#ff5f7e', pb: '#8c1d3d', caption: `Le son sort sur ${esc(state.audio.device)}.`,
+        lead: 'Règle le volume et choisis où sort le son.',
+        body: `<div class="opts">${volRow()}</div>
+          ${group('Sortie')}
+          <div class="opts" role="radiogroup" aria-label="Sortie du son">
+            ${radio('audio:auto', 'Auto', 'Sur le casque ou l’enceinte Bluetooth dès qu’il est connecté, sinon sur l’écran utilisé.', state.audio.mode === 'auto')}
+            ${radio('audio:tv', 'Télé (HDMI)', state.hdmi ? 'Par la télé, même si l’image est sur le PC.' : 'Branche le câble HDMI pour la choisir.', state.audio.mode === 'tv', !state.hdmi)}
+            ${radio('audio:pc', 'Haut-parleurs du PC', 'Même quand l’image est sur la télé.', state.audio.mode === 'pc')}
+            ${state.bt.audio === false
+              ? radio('audio:bluetooth', 'Appareil Bluetooth', 'Le module son Bluetooth manque : relance update.sh.', state.audio.mode === 'bluetooth', true)
+              : radio('audio:bluetooth', 'Appareil Bluetooth', btDev ? esc(btDev.name) : 'Aucun casque ni enceinte connecté.', state.audio.mode === 'bluetooth', !btDev)}
+          </div>
+          ${group('Appareils')}
+          <div class="opts">${row('panel:bluetooth', 'bluetooth', 'Connecter un casque ou une enceinte', '')}</div>`
+      };
+    },
+    bluetooth: () => {
+      const mine = state.bt.devices.filter(d => d.paired), found = state.bt.devices.filter(d => !d.paired);
+      // un appareil déjà appairé se reconnecte d'un seul appui, sans repasser en mode appairage
+      const devRow = d => row(d.paired && d.connected ? `btdev:${d.mac}` : `btconnect:${d.mac}`, BT_ICON[d.kind] || 'bluetooth', esc(d.name),
+        BT_KIND[d.kind] || 'Appareil Bluetooth', d.paired ? (d.connected ? 'Connecté' : 'Se connecter') : 'Appairer');
+      return {
+        title: 'Bluetooth', icon: 'bluetooth', pa: '#3d8bff', pb: '#173f9c', caption: 'Casques, enceintes et manettes.',
+        lead: 'Les appareils de « Mes appareils » sont mémorisés, même après un redémarrage : touche-les pour les connecter, sans mode appairage. Pour un nouveau, mets-le en mode appairage puis lance la recherche.',
+        body: `<div class="opts">
+            ${row('btscan', 'search', state.bt.scanning ? 'Recherche en cours…' : 'Rechercher des appareils',
+              state.bt.scanning ? 'Les appareils trouvés apparaissent ci-dessous.' : '', state.bt.scanning ? '<span class="spin"></span>' : '')}
+          </div>
+          ${group('Mes appareils')}
+          <div class="opts">${mine.length ? mine.map(devRow).join('') : '<p class="opt-empty">Aucun appareil appairé pour l’instant.</p>'}</div>
+          ${found.length || state.bt.scanning ? `${group('Appareils trouvés')}<div class="opts">${found.length ? found.map(devRow).join('') : '<p class="opt-empty">Recherche…</p>'}</div>` : ''}`
+      };
+    },
+    btdevice: () => {
+      const d = state.bt.devices.find(x => x.mac === state.btSel) || { mac: state.btSel, name: 'Appareil Bluetooth', kind: 'other', connected: false };
+      return {
+        title: esc(d.name), icon: BT_ICON[d.kind] || 'bluetooth', pa: '#3d8bff', pb: '#173f9c', caption: `${BT_KIND[d.kind] || 'Appareil Bluetooth'} · ${d.connected ? 'connecté' : 'non connecté'}`,
+        body: `<div class="opts">
+            ${d.connected ? row(`btdisconnect:${d.mac}`, 'close', 'Déconnecter', '') : row(`btconnect:${d.mac}`, 'replay', 'Réessayer la connexion', 'Allume l’appareil avant.')}
+            ${d.kind === 'audio' && d.connected ? row(`audiouse:${d.mac}`, 'headphones', 'Utiliser pour le son', 'Le son passe sur cet appareil.') : ''}
+            ${row(`btremove:${d.mac}`, 'alert', 'Oublier cet appareil', 'Seulement s’il ne se connecte plus du tout : il faudra l’appairer à nouveau.')}
+          </div>
+          ${d.kind === 'audio' && !d.connected ? `<p class="note" style="margin-top:1.2rem">AirPods : ouvre le boîtier près du PC. S’ils sont connectés à ton téléphone, déconnecte-les d’abord, ou choisis-les ici pendant qu’ils sont libres.</p>` : ''}`
+      };
+    },
+    controller: () => ({
+      title: 'Manette', icon: 'gamepad', pa: '#43c46a', pb: '#17693a', caption: 'Manette Xbox en Bluetooth.',
+      body: `<div class="card"><span class="sdot ${state.pad ? 'on' : ''}"></span><div><div class="card-title">${state.pad ? esc(state.pad) : 'Aucune manette connectée'}</div><div class="card-sub">${state.pad ? 'Prête à l’emploi' : 'Allume-la : elle se reconnecte toute seule.'}</div></div></div>
+        <div class="opts">${row('pair', 'plus', 'Appairer une nouvelle manette', 'Maintiens le bouton d’appairage (sur le dessus) jusqu’à ce que le logo clignote vite.')}</div>
+        ${group('Boutons')}
+        <dl class="facts">
+          <dt>A</dt><dd>Ouvrir, valider</dd>
+          <dt>B</dt><dd>Retour</dd>
+          <dt>Bouton Xbox</dt><dd>Retour au menu (dans Steam Link : maintiens-le une seconde)</dd>
+          <dt>≡ Menu</dt><dd>Centre de contrôle</dd>
+          <dt>LB / RB</dt><dd>Volume − / +</dd>
+          <dt>Y</dt><dd>Lecture / pause</dd>
+        </dl>
+        ${group('Mode souris')}
+        <div class="opts">${row('mouse', 'mouse', 'Mode souris', 'Pour les applis qui se pilotent mal aux flèches. Aussi dans le centre de contrôle.', state.mouse ? 'Activé' : 'Désactivé')}</div>
+        <dl class="facts">
+          <dt>Stick gauche</dt><dd>Déplacer le curseur</dd>
+          <dt>A</dt><dd>Cliquer (maintenu : glisser)</dd>
+          <dt>X</dt><dd>Clic droit</dd>
+          <dt>Stick droit</dt><dd>Faire défiler</dd>
+          <dt>Dans le menu</dt><dd>La manette garde les flèches</dd>
+        </dl>`
+    }),
+    remote: () => {
+      const url = state.remoteUrl, short = url.replace(/^https?:\/\//, '').replace(/\/remote$/, '');
+      const phones = state.live ? state.phones : (state.phoneDemo ? 1 : 0);
+      let qr = '';
+      if (state.live && state.qr) qr = '<img src="/api/qr.svg" alt="QR code de la télécommande">';
+      else { qr = qrSVG(url); if (!qr) loadQrLib().then(() => { if (state.panel === 'remote') renderPanel(currentAct()); }).catch(() => {}); }
+      return {
+        qrscreen: true,
+        body: `<div class="qr-screen">
+            <div class="qr-big">${qr || '<p class="qr-wait">Tape l’adresse à droite dans le navigateur du téléphone.</p>'}</div>
+            <div class="qr-side">
+              <p class="kicker">Télécommande</p>
+              <h2 class="qr-title">Scanne avec ton téléphone pour piloter Scaros</h2>
+              <p class="qr-url"><small>Ou tape cette adresse</small>${esc(short)}</p>
+              <p class="qr-net">${icon('wifi')}<span>Wi-Fi de Scaros : <b>${esc(wifiCurrent() || 'aucun')}</b>${state.localName ? ` · ${esc(state.localName)}` : ''}</span></p>
+              <ol class="steps"><li>Téléphone sur ce même Wi-Fi (pas l’invité).</li><li>Appareil photo, puis touche le lien.</li><li>Pour la garder : Partager › Sur l’écran d’accueil.</li></ol>
+              <p class="qr-status"><span class="sdot ${phones ? 'on' : ''}"></span>${phones ? `${phones > 1 ? phones + ' téléphones connectés' : 'Téléphone connecté'}` : 'En attente d’un téléphone…'}</p>
+              <p class="qr-help">La page ne s’ouvre pas ? Essaie dans Safari, sinon lance le diagnostic réseau ci-dessous.${/5\s?G/i.test(wifiCurrent() || '') ? ' Sur un CPL ou un répéteur, le Wi-Fi 5 GHz isole souvent les appareils : mets plutôt Scaros sur le 2,4 GHz.' : ''}</p>
+              <div class="opts">
+                ${row('back', 'back', 'Retour', '')}
+                ${row('panel:netdiag', 'info', 'Diagnostic réseau', '')}
+                ${state.live ? '' : row('phone', 'phone', state.phoneDemo ? 'Masquer la télécommande de démo' : 'Essayer la télécommande ici', '')}
+              </div>
+            </div>
+          </div>`
+      };
+    },
+    wifi: () => {
+      const cur = state.wifiList.find(n => n.active);
+      const netRow = n => `<button type="button" class="opt" data-act="wifinet:${esc(n.ssid)}">${sigBars(n.signal)}<span class="opt-main"><span class="opt-title">${esc(n.ssid)}</span><span class="opt-desc">${n.active ? 'Connecté' : n.known ? 'Enregistré' : n.secure ? 'Protégé par un mot de passe' : 'Réseau ouvert'}</span></span>${n.secure ? icon('lock', 'chev') : ''}</button>`;
+      return {
+        title: 'Wi-Fi', icon: 'wifi', pa: '#4c8dff', pb: '#1d3b8a', caption: 'Choisis un réseau, puis tape son mot de passe avec le clavier à l’écran.',
+        body: `<div class="card"><span class="sdot ${cur ? 'on' : ''}"></span><div><div class="card-title">${cur ? esc(cur.ssid) : 'Pas de Wi-Fi'}</div><div class="card-sub">${cur ? (state.ip ? `Adresse : ${esc(state.ip)}` : 'Connecté') : 'Choisis un réseau ci-dessous.'}</div></div></div>
+          <div class="opts">${row('wifiscan', 'search', state.wifiScanning ? 'Recherche en cours…' : 'Actualiser la liste', '', state.wifiScanning ? '<span class="spin"></span>' : '')}
+            ${row('panel:netdiag', 'info', 'Diagnostic réseau', 'Si le téléphone ou l’iPhone (AirPlay) n’arrive pas à joindre Scaros.')}</div>
+          ${group('Réseaux')}
+          <div class="opts">${state.wifiList.length ? state.wifiList.map(netRow).join('') : '<p class="opt-empty">Aucun réseau trouvé. Actualise la liste.</p>'}</div>`
+      };
+    },
+    wifinetwork: () => {
+      const n = state.wifiList.find(x => x.ssid === state.wifiSel) || { ssid: state.wifiSel, signal: 0 };
+      return {
+        title: esc(n.ssid), icon: 'wifi', pa: '#4c8dff', pb: '#1d3b8a', caption: n.active ? 'Connecté' : 'Réseau enregistré',
+        body: `<div class="opts">
+            ${n.active ? '' : row('wificonnect', 'wifi', 'Se connecter', '')}
+            ${n.secure !== false ? row('wifipass', 'lock', 'Changer le mot de passe', '') : ''}
+            ${row('wififorget', 'close', 'Oublier ce réseau', 'Il faudra retaper le mot de passe pour y revenir.')}
+          </div>`
+      };
+    },
+    wifipass: () => ({
+      title: 'Mot de passe', icon: 'lock', pa: '#4c8dff', pb: '#1d3b8a', wide: true, caption: esc(state.wifiSel),
+      lead: `Réseau « ${esc(state.wifiSel)} ». Tu peux aussi taper avec un clavier, ou depuis la télécommande du téléphone.`,
+      body: `<div class="pw-field">${state.pw ? esc(pwShown()) : '<span class="ph">Mot de passe</span>'}<span class="caret"></span></div>
+        ${keyboardHTML()}
+        <div class="opts">${row('pwshow', 'eye', state.pwShow ? 'Masquer le mot de passe' : 'Afficher le mot de passe', '')}</div>`
+    }),
+    ambiance: () => {
+      const w = state.weather, bg = state.prefs.bg || 'weather', city = (state.place && state.place.city) || (w && w.city);
+      const auto = !state.place || state.place.auto !== false;
+      return {
+        title: 'Fond et météo', icon: wxIcon(w), pa: '#3a9bff', pb: '#1d4f9a', caption: 'Le fond de l’accueil s’anime selon le temps qu’il fait dehors.',
+        body: `<div class="card wx-big">${icon(wxIcon(w))}<div><div class="card-title">${w ? `${w.temp}° · ${esc(w.label)}` : 'Météo indisponible'}</div><div class="card-sub">${w ? `${esc(w.city || city || '')}${w.max != null ? ` · max ${w.max}°, min ${w.min}°` : ''}` : 'Vérifie la connexion internet.'}</div></div></div>
+          ${group('Fond de l’accueil')}<div class="opts" role="radiogroup" aria-label="Fond de l’accueil">
+            ${radio('pref:bg:weather', 'Météo en direct · recommandé', `Le paysage suit le temps${city ? ` à ${esc(city)}` : ''} et l’heure : soleil, nuages, pluie, neige, nuit.`, bg === 'weather')}
+            ${radio('pref:bg:stars', 'Nuit étoilée', 'Le paysage de nuit, sous les étoiles.', bg === 'stars')}
+            ${radio('pref:bg:aurora', 'Aurore boréale', 'Des voiles colorés au-dessus des montagnes.', bg === 'aurora')}
+            ${radio('pref:bg:rain', 'Pluie douce', 'Toujours de la pluie, même au soleil.', bg === 'rain')}
+            ${radio('pref:bg:snow', 'Neige', 'Le paysage enneigé, des flocons qui tombent.', bg === 'snow')}
+            ${radio('pref:bg:none', 'Couleurs des applis', 'Sans paysage : la couleur et le logo de l’appli choisie.', bg === 'none')}
+          </div>
+          ${group('Ville de la météo')}<div class="opts">
+            ${row('citysearch', 'search', 'Changer de ville', '', esc(city || 'Non trouvée'))}
+            ${auto ? '' : row('cityauto', 'replay', 'Détecter automatiquement', 'D’après l’adresse internet de la box.')}
+          </div>
+          ${state.live && !state.dry ? '' : `${group('Démo')}<div class="opts">${row('wxdemo', 'replay', 'Changer la météo', 'Pour voir les autres fonds animés.')}</div>`}`
+      };
+    },
+    citysearch: () => ({
+      title: 'Ville', icon: 'search', pa: '#3a9bff', pb: '#1d4f9a', wide: true, caption: 'Pour la météo de l’accueil.',
+      lead: 'Tape le nom de ta ville, puis Rechercher. Tu peux aussi taper avec un clavier ou la télécommande du téléphone.',
+      body: `<div class="pw-field">${state.cityQuery ? esc(state.cityQuery) : '<span class="ph">Nom de la ville</span>'}<span class="caret"></span></div>
+        ${keyboardHTML()}`
+    }),
+    cityresults: () => {
+      const r = state.cityResults;
+      return {
+        title: 'Choisis ta ville', icon: 'search', pa: '#3a9bff', pb: '#1d4f9a', caption: `Recherche : « ${esc(state.cityQuery)} »`,
+        body: r === null ? '<p class="note"><span class="spin"></span> Recherche…</p>'
+          : r.error ? `<p class="note">Recherche impossible : vérifie la connexion internet.</p><div class="opts" style="margin-top:1rem">${row('back', 'back', 'Retour', '')}</div>`
+          : r.length ? `<div class="opts">${r.map((c, i) => row(`city:${i}`, 'pin', esc(c.name), esc([c.admin, c.country].filter(Boolean).join(', ')))).join('')}</div>`
+          : `<p class="note">Aucune ville trouvée. Vérifie l’orthographe.</p><div class="opts" style="margin-top:1rem">${row('back', 'back', 'Retour', '')}</div>`
+      };
+    },
+    airplay: () => {
+      const a = state.airplay, on = a.enabled && a.available;
+      // l'état réel : installé ? lancé ? annoncé sur le réseau (ce que voit l'iPhone) ?
+      let title, sub, ok = false;
+      if (!a.available) { title = 'AirPlay à installer'; sub = 'Relance update.sh pour l’ajouter.'; }
+      else if (!a.enabled) { title = 'AirPlay désactivé'; sub = 'Scaros n’apparaît pas sur tes appareils.'; }
+      else if (mirroring()) { title = `Recopie : ${esc(a.device || 'iPhone')}`; sub = 'B ou bouton Xbox pour l’arrêter.'; ok = true; }
+      else if (a.error) { title = 'AirPlay ne démarre pas'; sub = esc(a.error); }
+      else if (!a.running) { title = 'Démarrage d’AirPlay…'; sub = 'Quelques secondes.'; }
+      else if (a.checking) { title = 'Vérification de l’annonce…'; sub = 'Scaros regarde s’il s’annonce bien sur le Wi-Fi.'; }
+      else if (a.advertised === false) { title = 'Lancé, mais pas annoncé sur le Wi-Fi'; sub = 'Redémarre AirPlay. Si ça persiste, redémarre le PC.'; }
+      else { title = 'Prêt'; sub = `Annoncé sur le Wi-Fi sous le nom « ${esc(a.name || 'Scaros')} ».`; ok = true; }
+      return {
+        title: 'AirPlay', icon: 'airplay', pa: '#7a6cff', pb: '#2e2a8a', caption: 'Depuis un iPhone, un iPad ou un Mac.',
+        lead: 'Envoie l’écran de ton iPhone, une vidéo ou des photos sur la télé, comme avec une Apple TV.',
+        body: `<div class="card"><span class="sdot ${ok ? 'on' : ''}"></span><div><div class="card-title">${title}${a.checking ? ' <span class="spin"></span>' : ''}</div><div class="card-sub">${sub}</div></div></div>
+          <div class="opts">
+            ${mirroring() ? row('airplaystop', 'close', 'Arrêter la recopie', '') : ''}
+            ${on && !mirroring() ? row('airplayrestart', 'replay', 'Redémarrer AirPlay', 'À faire si Scaros n’apparaît pas sur l’iPhone.') : ''}
+            ${on && a.running && !mirroring() ? row('airplaycheck', 'search', 'Vérifier l’annonce', 'Regarde si Scaros s’annonce bien sur le Wi-Fi.') : ''}
+          </div>
+          ${group('AirPlay')}
+          <div class="opts" role="radiogroup" aria-label="AirPlay">
+            ${radio('airplay:on', 'Activé', '', a.enabled, !a.available)}
+            ${radio('airplay:off', 'Désactivé', 'Scaros n’apparaît plus dans la liste AirPlay.', !a.enabled, !a.available)}
+          </div>
+          ${group('Sur l’iPhone')}
+          <ol class="steps"><li>Même Wi-Fi que Scaros (pas le réseau invité).</li><li>Centre de contrôle › Recopie de l’écran › Scaros.</li><li>Ou le bouton AirPlay d’une appli (vidéo, photos, musique).</li><li>B ou bouton Xbox pour arrêter la recopie.</li></ol>
+          ${group('Scaros n’apparaît pas ?')}
+          <ol class="steps"><li>Si l’état ci-dessus dit « Prêt » : Scaros s’annonce bien, c’est le Wi-Fi qui n’apporte pas l’annonce jusqu’à l’iPhone.</li><li>Mets l’iPhone sur le même Wi-Fi <b>et la même bande</b> que Scaros : le 2,4 GHz du même boîtier (CPL ou box). Entre 2,4 et 5 GHz, beaucoup de CPL bloquent les annonces AirPlay alors que la télécommande marche.</li><li>Sur l’iPhone, coupe puis rallume le Wi-Fi : il oublie les appareils qu’il avait en mémoire.</li><li>Toujours rien ? Lance le diagnostic et ouvre la Recopie de l’écran pendant l’écoute : il dit si la recherche de l’iPhone arrive jusqu’à Scaros.</li></ol>
+          <div class="opts" style="margin-top:1rem">${row('panel:netdiag', 'info', 'Diagnostic réseau', 'Trouve ce qui bloque entre l’iPhone et Scaros.')}</div>
+          ${state.live && !state.dry ? '' : `${group('Démo')}<div class="opts">${row('airplaydemo', 'airplay', mirroring() ? 'Arrêter la recopie de démo' : 'Essayer une recopie', 'Simule un iPhone qui envoie son écran.')}</div>`}`
+      };
+    },
+    netdiag: () => {
+      const d = state.diag, rep = parseDiag(state.diagReport);
+      const addr = (state.remoteUrl || '').replace(/^https?:\/\//, '');
+      let now = '';
+      if (d.running && d.step === 'listen') {
+        now = `<div class="diag-now"><p class="k">Maintenant, sur le téléphone</p><p class="t">Ouvre Safari et tape l’adresse :</p><p class="u">${esc(addr)}</p>
+          <p class="t">Puis, sur l’iPhone : Centre de contrôle › Recopie de l’écran. Scaros écoute encore <b id="diag-count">${diagLeft()} s</b>.</p></div>`;
+      } else if (d.running) {
+        now = `<div class="card"><span class="sdot"></span><div><div class="card-title">Vérification de la connexion… <span class="spin"></span></div><div class="card-sub">Une quinzaine de secondes. Prépare ton téléphone.</div></div></div>`;
+      } else if (d.step === 'done' && !rep && state.live) {
+        now = `<div class="card"><span class="sdot"></span><div><div class="card-title">Lecture du résultat… <span class="spin"></span></div></div></div>`;
+      } else if (d.step === 'failed') {
+        now = `<div class="card"><span class="sdot"></span><div><div class="card-title">Le diagnostic n’a pas pu se lancer</div><div class="card-sub">Mets à jour Scaros (Réglages › Mise à jour), puis réessaie.</div></div></div>`;
+      }
+      const when = d.at ? `${fDay.format(new Date(d.at * 1000))} à ${fT.format(new Date(d.at * 1000))}` : '';
+      const report = !d.running && rep ? `
+          ${rep.verdict ? `<div class="diag-sec verdict" data-act="diagsec:v" tabindex="-1"><h3>Résultat${when ? ` · ${esc(when)}` : ''}</h3>${rep.verdict.lines.map(diagLine).join('')}</div>` : ''}
+          <div class="opts">${row('diagstart', 'replay', 'Relancer le diagnostic', 'Garde ton téléphone en main : il faudra essayer pendant 30 secondes.')}</div>
+          ${group('Détails')}
+          ${rep.secs.map((sec, i) => `<div class="diag-sec" data-act="diagsec:${i}" tabindex="-1"><h3>${esc(sec.title)}</h3>${sec.lines.map(diagLine).join('')}</div>`).join('')}
+          ${state.live ? `<p class="note">Pour copier ce rapport, ouvre <b>${esc(addr.replace(/\/remote$/, ''))}/diag</b> dans le navigateur d’un PC.</p>` : ''}` : '';
+      return {
+        title: 'Diagnostic réseau', icon: 'search', pa: '#4c8dff', pb: '#1d3b8a', caption: 'Pour la télécommande du téléphone et AirPlay.',
+        lead: d.running || rep || d.step === 'done' ? '' : 'Scaros vérifie sa connexion, puis écoute 30 secondes pendant que tu ouvres la télécommande puis la Recopie de l’écran sur le téléphone. Il voit ainsi si les demandes du téléphone arrivent jusqu’à lui.',
+        body: d.running || (d.step === 'done' && !rep && state.live) ? `${now}<div class="opts">${row('back', 'back', 'Retour', 'Le diagnostic continue.')}</div>`
+          : `${now}${report || `<div class="opts">${row('diagstart', 'search', 'Lancer le diagnostic', 'Garde ton téléphone en main : il faudra essayer pendant 30 secondes.')}</div>`}`
+      };
+    },
+    update: () => {
+      const u = state.update, step = { start: 'Préparation…', download: 'Téléchargement…', install: 'Installation…', done: 'Terminé : l’écran redémarre…', failed: 'La mise à jour a échoué.' };
+      const when = u.checked ? fT.format(new Date(u.checked * 1000)) : '';
+      let title, sub, on = false;
+      if (u.running) { title = 'Mise à jour en cours'; sub = step[u.step] || 'Patiente…'; }
+      else if (u.checking) { title = 'Recherche d’une mise à jour…'; sub = ''; }
+      else if (u.step === 'failed') { title = 'La mise à jour a échoué'; sub = 'Vérifie la connexion internet, puis réessaie.'; }
+      else if (u.available) { title = 'Nouvelle version disponible'; sub = esc(u.message || ''); on = true; }
+      else if (u.error === 'offline') { title = 'Impossible de vérifier'; sub = 'Vérifie la connexion internet.'; }
+      else if (u.available === false) { title = 'Scaros est à jour'; sub = when ? `Vérifié à ${when}` : ''; }
+      else { title = 'Version installée inconnue'; sub = 'Mets à jour une fois pour être sûr d’avoir la dernière.'; }
+      return {
+        title: 'Mise à jour', icon: 'download', pa: '#30c46a', pb: '#17693a', caption: `Scaros OS ${esc(state.version)}`,
+        lead: 'Les applis, les réglages et tes appareils sont gardés. L’écran redémarre à la fin.',
+        body: `<div class="card"><span class="sdot ${on ? 'on' : ''}"></span><div><div class="card-title">${title}${u.running || u.checking ? ' <span class="spin"></span>' : ''}</div>${sub ? `<div class="card-sub">${sub}</div>` : ''}</div></div>
+          <div class="opts">
+            ${row('updatestart', 'download', 'Mettre à jour Scaros', 'Environ une minute avec une bonne connexion.')}
+            ${row('updatecheck', 'search', 'Rechercher une mise à jour', '')}
+          </div>
+          ${u.source ? `<p class="note" style="margin-top:1.2rem">Mises à jour depuis github.com/${esc(u.source)}. Pour suivre un autre dépôt : <b>su -</b> puis <b>scaros-update --depuis ton-pseudo/ton-depot</b>.</p>` : ''}`
+      };
+    },
+    general: () => {
+      const ts = state.prefs.textScale, as = Number(state.prefs.autoSleep) || 0, th = state.prefs.theme || 'dark';
+      const svOn = saverEnabled(), sv = saverDelay();
+      return {
+        title: 'Affichage et veille', icon: 'look', pa: '#8b6cff', pb: '#3b2a8a', caption: 'Pour bien lire depuis le canapé.',
+        body: `${group('Apparence')}<div class="opts" role="radiogroup" aria-label="Apparence">
+            ${radio('pref:theme:dark', 'Sombre', 'Reposant le soir, idéal pour les films.', th === 'dark')}
+            ${radio('pref:theme:light', 'Clair', 'Plus lisible dans une pièce lumineuse.', th === 'light')}
+            ${radio('pref:theme:auto', 'Automatique', 'Clair de 7 h à 19 h, sombre le reste du temps.', th === 'auto')}
+          </div>
+          ${group('Taille du texte')}<div class="opts" role="radiogroup" aria-label="Taille du texte">
+            ${radio('pref:textScale:normal', 'Normale', '', ts === 'normal')}
+            ${radio('pref:textScale:large', 'Grande', '', ts === 'large')}
+            ${radio('pref:textScale:xlarge', 'Très grande', '', ts === 'xlarge')}
+          </div>
+          ${group('Économiseur d’écran')}<div class="opts" role="radiogroup" aria-label="Économiseur d’écran">
+            ${radio('pref:saverOn:on', 'Activé', 'Les paysages de Scaros avec l’heure et la météo, quand personne ne touche au menu.', svOn)}
+            ${radio('pref:saverOn:off', 'Désactivé', 'Le menu reste affiché tel quel.', !svOn)}
+          </div>
+          ${svOn ? `${group('L’économiseur se lance au bout de')}<div class="opts" role="radiogroup" aria-label="Délai de l’économiseur">
+            ${radio('pref:saver:2', '2 minutes', '', sv === 2)}
+            ${radio('pref:saver:5', '5 minutes', '', sv === 5)}
+            ${radio('pref:saver:10', '10 minutes', '', sv === 10)}
+            ${radio('pref:saver:15', '15 minutes', '', sv === 15)}
+          </div>` : ''}
+          <div class="opts" style="margin-top:.55rem">${row('saverpreview', 'play', 'Voir l’économiseur', 'Une touche pour revenir.')}</div>
+          ${group('Veille automatique du menu')}<div class="opts" role="radiogroup" aria-label="Veille automatique">
+            ${radio('pref:autoSleep:0', 'Jamais', '', as === 0)}
+            ${radio('pref:autoSleep:15', 'Après 15 minutes', '', as === 15)}
+            ${radio('pref:autoSleep:30', 'Après 30 minutes', '', as === 30)}
+            ${radio('pref:autoSleep:60', 'Après 1 heure', '', as === 60)}
+          </div>
+          <p class="note" style="margin-top:1rem">L’économiseur et la veille ne passent jamais par-dessus une appli ouverte : ils ne comptent que le temps passé sur le menu sans y toucher.</p>`
+      };
+    },
+    apps: () => ({
+      title: 'Applis', icon: 'apps', pa: '#ff9f43', pb: '#8a4a12', caption: 'Les applis viennent de Flathub.',
+      body: `<div class="opts">${row('appsupdate', 'download', state.appsUpdating ? 'Mise à jour en cours…' : 'Mettre à jour les applis',
+          state.appsUpdating ? 'Ça peut prendre quelques minutes.' : 'Télécharge les dernières versions de YouTube, Jellyfin, Plex et Steam Link.', state.appsUpdating ? '<span class="spin"></span>' : '')}</div>
+        ${group('Applis du menu')}
+        <dl class="facts">${APPS.map(a => `<dt>${a.name}</dt><dd>${state.live && state.installed[a.id] === false ? 'À installer : relance update.sh' : a.id === 'twitch' ? 'Appli web, toujours à jour' : 'Installée'}</dd>`).join('')}</dl>`
+    }),
+    power: () => ({
+      title: 'Alimentation', icon: 'power', pa: '#ff6a4d', pb: '#8a2416', caption: 'Le PC peut rester fermé quand il est branché à la télé.',
+      body: `<div class="opts">
+          ${row('power:sleep', 'moon', 'Mettre en veille', 'L’écran affiche l’heure, une touche le rallume.')}
+          ${row('power:restart', 'replay', 'Redémarrer', 'Scaros redémarre et revient sur ce menu.')}
+          ${row('power:off', 'power', 'Éteindre', 'Le PC s’éteint complètement.')}
+        </div>`
+    }),
+    about: () => {
+      const i = state.info || {};
+      const fact = (k, v) => `<dt>${k}</dt><dd>${esc(v || '—')}</dd>`;
+      return {
+        title: 'À propos', mark: true, pa: '#6b7385', pb: '#262a33', caption: `Scaros OS ${esc(state.version)}`,
+        body: `<dl class="facts">
+            ${fact('Version', `Scaros OS ${state.version}${state.live ? '' : ' (maquette)'}`)}
+            ${fact('Processeur', i.cpu)}
+            ${fact('Mémoire', i.ram)}
+            ${fact('Stockage libre', i.disk)}
+            ${fact('Allumé depuis', i.uptime ? fmtUptime(i.uptime) : '')}
+            ${fact('Adresse', state.ip ? `${state.ip} · ${i.hostname || 'scaros'}.local` : '')}
+          </dl>
+          <div class="opts">
+            ${state.update.disabled ? '' : row('panel:update', 'download', 'Mettre à jour Scaros', '')}
+            ${row('replay', 'replay', 'Revoir l’animation de démarrage', '')}
+            ${row('reload', 'replay', 'Recharger le menu', 'Utile si l’affichage se fige.')}
+          </div>`
+      };
+    },
+    control: () => {
+      const d = new Date(), app = mirroring() ? null : state.launched && byId[state.launched];
+      // ouvert pendant une appli : elle reste ouverte derrière, on peut y revenir ou la fermer
+      const appBlock = app ? `<div class="cc-app"><span class="cc-app-art" style="--bg:${app.bg}">${ART[app.id]()}</span><div><p class="cc-app-k">En cours</p><p class="cc-app-n">${app.name}</p></div></div>
+          <div class="opts cc-app-rows">${row('resume', 'play', `Revenir à ${app.name}`, '')}${row('closeapp', 'close', `Fermer ${app.name}`, '')}</div>`
+        : mirroring() ? `<div class="cc-app"><span class="cc-app-art" style="--bg:#000;color:#fff">${icon('airplay')}</span><div><p class="cc-app-k">Recopie AirPlay</p><p class="cc-app-n">${esc(state.airplay.device || 'iPhone')}</p></div></div>
+          <div class="opts cc-app-rows">${row('resume', 'play', 'Revenir à la recopie', '')}${row('airplaystop', 'close', 'Arrêter la recopie', '')}</div>` : '';
+      // pendant une appli, l'appli en cours remplace la grande horloge (tout tient sans défiler)
+      return {
+        side: true,
+        body: `<div class="pane-main cc-main">${app || mirroring() ? '' : `<div class="cc-head"><p class="cc-time">${fT.format(d)}</p><p class="cc-date">${fD.format(d)}</p>${state.weather ? `<p class="cc-wx">${wxLine(state.weather, true)}</p>` : ''}</div>`}
+          ${appBlock}
+          <div class="quick">
+            ${quick('panel:remote', 'qr', 'Télécommande')}
+            ${quick('mouse', 'mouse', 'Souris', state.mouse)}
+            ${quick('power:sleep', 'moon', 'Veille')}
+            ${quick('power:off', 'power', 'Éteindre')}
+          </div>
+          <div class="opts">
+            ${volRow(true)}
+            ${row('panel:sound', 'speaker', 'Son', '', esc(shortAudio()))}
+            ${row('panel:display', state.output === 'tv' ? 'tv' : 'laptop', 'Écran', '', outputLabel())}
+            ${row('panel:bluetooth', 'bluetooth', 'Bluetooth', '', btSummary())}
+            ${row('panel:settings', 'gear', 'Tous les réglages', '')}
+          </div></div>`
+      };
+    }
+  };
+  const PAGE_NAME = { settings: 'Réglages', display: 'Écran', sound: 'Son', bluetooth: 'Bluetooth', btdevice: 'Appareil', controller: 'Manette',
+    remote: 'Télécommande', wifi: 'Wi-Fi', ambiance: 'Fond et météo', citysearch: 'Ville', cityresults: 'Résultats',
+    airplay: 'AirPlay', update: 'Mise à jour', netdiag: 'Diagnostic réseau', wifinetwork: 'Réseau', wifipass: 'Mot de passe', general: 'Affichage et veille', apps: 'Applis',
+    power: 'Alimentation', about: 'À propos', control: 'Centre de contrôle' };
+
+  const currentAct = () => state.pItems[state.pIdx] && state.pItems[state.pIdx].dataset.act;
+  function renderPanel(keepAct) {
+    const p = PAGES[state.panel]();
+    // même page redessinée (liste Bluetooth, Wi-Fi…) : on garde l'endroit où on lisait
+    const oldBox = pane.dataset.page === state.panel && pane.querySelector('.pane-main, .qr-side');
+    const oldTop = oldBox ? oldBox.scrollTop : 0;
+    pane.dataset.page = state.panel;
+    pane.classList.toggle('side', !!p.side);
+    pane.classList.toggle('qrs', !!p.qrscreen);
+    $('#tv').classList.toggle('qr-open', !!p.qrscreen);
+    if (p.side || p.qrscreen) {
+      pane.style.removeProperty('--pa');
+      pane.innerHTML = p.body;
+    } else {
+      pane.style.setProperty('--pa', p.pa);
+      const trail = [...state.panelStack.map(s => s.id), state.panel].filter(id => id !== 'control').map(id => PAGE_NAME[id]);
+      const art = p.mark ? symbolSVG('mark') : p.art ? ART[p.art]() : icon(p.icon);
+      pane.innerHTML = `<p class="crumbs">${trail.slice(0, -1).map(t => `${t} › `).join('')}<b>${trail[trail.length - 1]}</b></p>
+        <div class="pane-grid${p.wide ? ' wide' : ''}">
+          <div class="pane-art"><div class="art-tile" style="--pa:${p.pa};--pb:${p.pb}${p.mark ? ';background:none;box-shadow:none' : ''}">${art}</div><p class="art-caption">${p.caption || ''}</p></div>
+          <div class="pane-main"><h2 class="pane-title">${p.title}</h2>${p.lead ? `<p class="pane-lead">${p.lead}</p>` : '<div style="height:2rem"></div>'}${p.body}</div>
+        </div>`;
+    }
+    state.pItems = [...pane.querySelectorAll('[data-act]:not([disabled])')];
+    const newBox = pane.querySelector('.pane-main, .qr-side');
+    if (newBox && oldTop) newBox.scrollTop = oldTop;
+    const pm = pane.querySelector('.pane-main');
+    if (pm) pm.addEventListener('scroll', () => markMore(pm), { passive: true });
+    const i = keepAct ? state.pItems.findIndex(el => el.dataset.act === keepAct) : 0;
+    setPIdx(Math.max(0, i));
+    if (pm) markMore(pm);
+  }
+  function markMore(pm) { pm.classList.toggle('more', pm.scrollTop + pm.clientHeight < pm.scrollHeight - 6); }
+  function rerenderPane() { if (state.panel) renderPanel(currentAct()); }
+  function setPIdx(i) {
+    state.pIdx = i;
+    state.pItems.forEach((el, k) => el.classList.toggle('is-focus', k === i));
+    const el = state.pItems[i];
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    // premier réglage : on remonte tout en haut (titre, état) ; dernier : on montre aussi ce qui suit
+    // (aide, liste des boutons…). Toujours sans perdre de vue le réglage choisi.
+    reveal(el, i === 0 ? 'top' : i === state.pItems.length - 1 ? 'bottom' : null);
+  }
+  const scrollBox = el => el && el.closest('.pane-main, .qr-side');
+  function reveal(el, edge) {
+    const box = scrollBox(el);
+    if (!box) { el.scrollIntoView({ block: 'nearest' }); return; }
+    const b = box.getBoundingClientRect(), r = el.getBoundingClientRect();
+    const top = box.scrollTop + r.top - b.top, bottom = top + r.height;
+    const max = Math.max(0, box.scrollHeight - box.clientHeight);
+    const pad = parseFloat(getComputedStyle(document.documentElement).fontSize) * 2;
+    const fade = edge === 'bottom' ? 0 : box.clientHeight * 0.18;  // bas en fondu tant qu'il reste du contenu
+    const lo = Math.max(0, bottom + pad + fade - box.clientHeight), hi = Math.max(0, top - pad);
+    const want = edge === 'top' ? 0 : edge === 'bottom' ? max : box.scrollTop;
+    box.scrollTop = Math.min(max, Math.max(lo, Math.min(hi, want)));
+    if (box.classList.contains('pane-main')) markMore(box);
+  }
+  // flèche vers le bas sur le dernier réglage (ou vers le haut sur le premier) : le texte défile quand même
+  function scrollRest(dir) {
+    const box = scrollBox(state.pItems[state.pIdx]) || pane.querySelector('.pane-main');
+    if (!box) return;
+    box.scrollTop = dir > 0 ? Math.min(box.scrollHeight - box.clientHeight, box.scrollTop + box.clientHeight * 0.6) : 0;
+    if (box.classList.contains('pane-main')) markMore(box);
+  }
+  function openPanel(id) {
+    // la liste Wi-Fi se met à jour d'elle-même à l'ouverture (au plus toutes les 20 s)
+    if (id === 'update' && state.live && !state.update.checking && !state.update.running
+        && Date.now() / 1000 - (state.update.checked || 0) > 600) api('/api/update/check', {}).catch(() => {});
+    if (id === 'netdiag' && state.live && state.diag.at && !state.diagReport) loadDiag();
+    if (id === 'citysearch') { state.cityQuery = ''; state.kbMode = 'abc'; state.kbShift = false; }
+    if (id === 'airplay' && state.live && state.airplay.running && !state.airplay.checking) api('/api/airplay', { action: 'check' }).catch(() => {});
+    if (id === 'wifi' && state.live && Date.now() - lastWifiScan > 20000) {
+      lastWifiScan = Date.now();
+      api('/api/wifi/scan', {}).catch(() => {});
+    }
+    if (state.panel) {
+      state.panelStack.push({ id: state.panel, act: currentAct() });
+      state.panel = id;
+      renderPanel();
+      updateHints();
+      return;
+    }
+    state.panel = id;
+    $('#tv').classList.add('pane-open');
+    pane.hidden = false; scrim.hidden = false;
+    renderPanel();
+    void pane.offsetWidth;
+    pane.classList.add('on'); scrim.classList.add('on');
+    updateHints();
+  }
+  function backPanel() {
+    const prev = state.panelStack.pop();
+    if (!prev) return closePanel();
+    state.panel = prev.id;
+    renderPanel(prev.act);
+    updateHints();
+  }
+  // resume : le panneau était ouvert par-dessus une appli, on lui rend l'écran
+  function closePanel({ resume = true } = {}) {
+    if (!state.panel) return;
+    state.panel = null;
+    state.panelStack = [];
+    $('#tv').classList.remove('pane-open', 'qr-open');
+    pane.classList.remove('on'); scrim.classList.remove('on');
+    setTimeout(() => { if (!state.panel) { pane.hidden = true; scrim.hidden = true; } }, 450);
+    if (state.launched || mirroring()) {
+      if (resume && state.live) api('/api/resume', {}).catch(() => {});
+      if (!state.live && !mirroring() && L.classList.contains('ready')) $('#l-back').focus({ preventScroll: true });
+    } else setFocus(state.focus);
+    updateHints();
+  }
+  function toggleControl() {
+    if (state.booting || state.power) return;
+    if (state.panel === 'control' && !state.panelStack.length) return closePanel();
+    if (state.panel) closePanel({ resume: false });
+    openPanel('control');
+  }
+  function activate(act) {
+    const i = act.indexOf(':');
+    const k = i < 0 ? act : act.slice(0, i), v = i < 0 ? '' : act.slice(i + 1);
+    const fail = () => toast('alert', 'Scaros ne répond pas.');
+    if (k === 'panel') openPanel(v);
+    else if (k === 'mode') {
+      if (state.live) api('/api/display', { mode: v }).catch(() => toast('alert', 'Le changement d’écran a échoué.'));
+      else { state.mode = v; applyOutput(); renderPanel(act); }
+    }
+    else if (k === 'res') {
+      if (state.live) api('/api/display', { res: v }).catch(() => toast('alert', 'Le changement de définition a échoué.'));
+      else {
+        state.tvRes = v;
+        if (state.output === 'tv') { state.res = RES_DEMO[v]; toast('tv', `Image sur la télé en ${state.res}.`); }
+        renderPanel(act);
+      }
+    }
+    else if (k === 'vol') mute();
+    else if (k === 'mouse') {
+      if (state.live) api('/api/mouse', { on: !state.mouse }).catch(fail);
+      else onMouse(!state.mouse);
+    }
+    else if (k === 'airplay') {
+      if (state.live) api('/api/airplay', { enabled: v === 'on' }).catch(fail);
+      else { state.airplay.enabled = v === 'on'; renderPanel(act); }
+    }
+    else if (k === 'airplaystop') { closePanel({ resume: false }); stopAirplay(); }
+    else if (k === 'airplayrestart' || k === 'airplaycheck') {
+      const action = k === 'airplayrestart' ? 'restart' : 'check';
+      if (state.live) api('/api/airplay', { action }).then(() => { if (action === 'restart') toast('airplay', 'AirPlay redémarre…'); }).catch(fail);
+      else { state.airplay = { ...state.airplay, checking: true }; renderPanel(act); setTimeout(() => { state.airplay = { ...state.airplay, checking: false, running: true, advertised: true }; rerenderPane(); }, 1200); }
+    }
+    else if (k === 'airplaydemo') {
+      const was = state.airplay.state;
+      if (state.live) { api('/api/dev/airplay', {}).catch(fail); return; }
+      state.airplay = { ...state.airplay, state: was === 'mirroring' ? 'idle' : 'mirroring', device: 'iPhone de Sam' };
+      onAirplay(was);
+    }
+    else if (k === 'citysearch') openPanel('citysearch');
+    else if (k === 'cityauto') {
+      if (state.live) api('/api/weather/city', { auto: true }).then(() => toast('wx-clear', 'Ville détectée automatiquement.')).catch(fail);
+      else { state.place = { city: 'Paris', auto: true }; state.weather.city = 'Paris'; renderPanel(); }
+    }
+    else if (k === 'city') {
+      const c = (state.cityResults || [])[Number(v)];
+      if (!c) return;
+      backPanel(); backPanel();  // résultats, puis clavier : retour à « Fond et météo »
+      if (state.live) api('/api/weather/city', c).then(() => toast(wxIcon(state.weather), `Météo de ${c.name}.`)).catch(fail);
+      else { state.place = { city: c.name, auto: false }; state.weather = { ...state.weather, city: c.name }; toast(wxIcon(state.weather), `Météo de ${c.name}.`); renderStatus(); rerenderPane(); }
+    }
+    else if (k === 'wxdemo') {
+      if (state.live) { api('/api/dev/weather', {}).catch(fail); return; }
+      demoWx = (demoWx + 1) % DEMO_WX.length;
+      state.weather = { ...DEMO_WX[demoWx], city: (state.place && state.place.city) || 'Paris' };
+      applySky(); renderStatus(); renderPanel(act);
+    }
+    else if (k === 'updatecheck') {
+      if (state.live) api('/api/update/check', {}).catch(fail);
+      else { state.update = { ...state.update, checking: true }; renderPanel(act); setTimeout(() => { state.update = { ...state.update, checking: false, available: false, checked: Date.now() / 1000 }; rerenderPane(); }, 1200); }
+    }
+    else if (k === 'updatestart') {
+      if (state.update.running) return;
+      if (state.live) api('/api/update/start', {}).catch(fail);
+      else toast('download', 'Sur le PC, Scaros télécharge ici la dernière version puis redémarre l’écran.');
+    }
+    else if (k === 'resume') closePanel();
+    else if (k === 'closeapp') { closePanel({ resume: false }); closeLaunch(); }
+    else if (k === 'hdmi') { toggleHdmi(); if (!state.live) renderPanel('hdmi'); }
+    else if (k === 'back') backPanel();
+    else if (k === 'phone') { closePanel({ resume: false }); if (state.launched) closeLaunch(); showPhone(!state.phoneDemo); }
+    else if (k === 'replay') { closePanel({ resume: false }); if (state.launched) closeLaunch(); boot(); }
+    else if (k === 'pair') {
+      if (state.live) api('/api/pair', {}).catch(fail);
+      else toast('gamepad', 'Sur le PC, Scaros cherche la manette pendant 30 secondes.');
+    }
+    else if (k === 'power') {
+      // la veille ferme l'appli ouverte (la vidéo s'arrête) ; extinction : le PC s'en charge
+      closePanel({ resume: false });
+      if (state.launched) closeLaunch(v === 'sleep');
+      v === 'sleep' ? sleep() : powerOff(v === 'restart');
+    }
+    else if (k === 'audio' || k === 'audiouse') {
+      const mode = k === 'audio' ? v : 'bluetooth', mac = k === 'audiouse' ? v : undefined;
+      if (state.live) api('/api/audio', { mode, mac }).catch(fail);
+      else { state.audio.mode = mode; demoAudio(); }
+    }
+    else if (k === 'btscan') { if (state.live) api('/api/bt/scan', {}).catch(fail); else demoScan(); }
+    else if (k === 'kb') { const [r, c] = v.split(':').map(Number); pressKey(r, c); }
+    else if (k === 'pwshow') { state.pwShow = !state.pwShow; renderPanel(act); }
+    else if (k === 'wifiscan') {
+      if (state.live) api('/api/wifi/scan', {}).catch(fail);
+      else { state.wifiScanning = true; rerenderPane(); setTimeout(() => { state.wifiScanning = false; rerenderPane(); }, 1500); }
+    }
+    else if (k === 'wifinet') {
+      const n = state.wifiList.find(x => x.ssid === v);
+      if (!n) return;
+      state.wifiSel = n.ssid;
+      if (n.active || n.known) openPanel('wifinetwork');
+      else if (n.secure) openPassword();
+      else wifiConnect(n.ssid);
+    }
+    else if (k === 'wificonnect') { backPanel(); wifiConnect(state.wifiSel); }
+    else if (k === 'wifipass') openPassword();
+    else if (k === 'wififorget') {
+      const ssid = state.wifiSel;
+      backPanel();
+      if (state.live) api('/api/wifi/forget', { ssid }).catch(fail);
+      else { const n = state.wifiList.find(x => x.ssid === ssid); if (n) { n.known = false; n.active = false; } wifiToast('forgotten', ssid); rerenderPane(); renderStatus(); }
+    }
+    else if (k === 'pref') {
+      const [key, raw] = v.split(':'), value = key === 'autoSleep' || key === 'saver' ? Number(raw) : raw;
+      if (state.live) api('/api/prefs', { key, value }).catch(fail);
+      else { state.prefs[key] = value; savePrefsLocal(); applyPrefs(); renderPanel(act); }
+    }
+    else if (k === 'appsupdate') {
+      if (state.live) api('/api/apps/update', {}).catch(fail);
+      else toast('download', 'Sur le PC, Scaros télécharge ici les dernières versions des applis.');
+    }
+    else if (k === 'reload') location.reload();
+    else if (k === 'saverpreview') startSaver();
+    else if (k === 'diagsec') { /* rubrique du rapport : focusable pour défiler à la manette */ }
+    else if (k === 'diagstart') {
+      if (state.diag.running) return;
+      if (state.live) { api('/api/diag/start', {}).catch(fail); return; }
+      // maquette : on simule les étapes
+      state.diag = { ...state.diag, running: true, step: 'checks', until: null };
+      renderPanel();
+      setTimeout(() => { state.diag = { ...state.diag, step: 'listen', until: Date.now() / 1000 + 8 }; diagTick(); rerenderPane(); }, 1500);
+      setTimeout(() => {
+        state.diag = { running: false, step: 'done', until: null, at: Date.now() / 1000 };
+        state.diagReport = DEMO_DIAG; diagTick(); rerenderPane();
+      }, 9500);
+    }
+    else if (k === 'btdev') { state.btSel = v; openPanel('btdevice'); }
+    else if (k === 'btconnect' || k === 'btdisconnect' || k === 'btremove') {
+      const action = k.slice(2);
+      if (state.live) api('/api/bt/' + action, { mac: v }).catch(fail);
+      else demoBt(action, v);
+      if (action === 'remove') backPanel();
+    }
+  }
+
+  // ---------- météo et fond animé ----------
+  const wxIcon = w => w ? (w.kind === 'clear' && !w.day ? 'wx-night' : 'wx-' + w.kind) : 'wx-cloudy';
+  const BG_LABEL = { weather: 'Météo en direct', stars: 'Ciel étoilé', aurora: 'Aurore', rain: 'Pluie', snow: 'Neige', none: 'Couleurs des applis' };
+  const DEMO_WX = [
+    { temp: 14, kind: 'rain', label: 'Pluie', day: true, max: 16, min: 9 },
+    { temp: 21, kind: 'clear', label: 'Ciel dégagé', day: true, max: 24, min: 12 },
+    { temp: -1, kind: 'snow', label: 'Neige', day: true, max: 1, min: -4 },
+    { temp: 9, kind: 'partly', label: 'Partiellement nuageux', day: false, max: 13, min: 6 },
+    { temp: 18, kind: 'storm', label: 'Orage', day: true, max: 22, min: 15 },
+    { temp: 7, kind: 'fog', label: 'Brouillard', day: true, max: 9, min: 4 },
+    { temp: 11, kind: 'cloudy', label: 'Couvert', day: true, max: 12, min: 7 }
+  ];
+  let demoWx = 0;
+  // Décor de l'accueil : un paysage dont le ciel, la lumière et les couleurs suivent la météo et l'heure.
+  // Palettes : ciel (haut, bas), montagnes lointaines, collines, prairie, lac, sapins, neige sur les sommets.
+  const PAL = {
+    clear:  { a: '#2c6cc0', b: '#a7d0f2', far: '#8fa9c6', mid: '#5b7896', near: '#2d4a3e', lake: '#79acdf', tree: '#1f362d', cap: .85, cloud: '255,255,255', co: .55 },
+    cloudy: { a: '#66768b', b: '#b9c3d0', far: '#9aa7b6', mid: '#6e7d8e', near: '#3a4a44', lake: '#8d9cae', tree: '#2a3833', cap: .6, cloud: '236,240,245', co: .62 },
+    rain:   { a: '#46505f', b: '#8b96a5', far: '#7a8594', mid: '#586371', near: '#2c3934', lake: '#6c7a8a', tree: '#1f2a27', cap: .45, cloud: '196,203,214', co: .55 },
+    storm:  { a: '#1f252e', b: '#4b5462', far: '#4c5563', mid: '#363e4a', near: '#1b2422', lake: '#3c4553', tree: '#141c1a', cap: .3, cloud: '120,128,142', co: .65 },
+    snow:   { a: '#7f93ab', b: '#dbe3ec', far: '#bccad8', mid: '#98a9bb', near: '#dfe6ee', lake: '#aebfd1', tree: '#3f505d', cap: .95, cloud: '245,247,250', co: .55 },
+    fog:    { a: '#9fa8b2', b: '#dde1e5', far: '#b9c0c7', mid: '#a2a9b1', near: '#7a8581', lake: '#bcc3ca', tree: '#5d6965', cap: .35, cloud: '240,242,244', co: .45 },
+    dawn:   { a: '#38457a', b: '#f3a77c', far: '#7d7192', mid: '#4d4a69', near: '#262c38', lake: '#d29882', tree: '#1a1f29', cap: .7, cloud: '255,214,196', co: .5 },
+    dusk:   { a: '#272b5c', b: '#ec8a5e', far: '#6a5a7c', mid: '#413d5c', near: '#1c2130', lake: '#bb7465', tree: '#141822', cap: .6, cloud: '255,190,170', co: .45 },
+    night:  { a: '#040a1d', b: '#1a2a50', far: '#22324f', mid: '#17233b', near: '#0c1322', lake: '#1c2b4b', tree: '#070c16', cap: .35, cloud: '130,145,175', co: .28 },
+    murk:   { a: '#0a0f19', b: '#252f3f', far: '#283242', mid: '#1b2330', near: '#0d131c', lake: '#222c3b', tree: '#080c12', cap: .25, cloud: '115,125,140', co: .38 }
+  };
+  // moment de la journée : nuit d'après la météo (lever et coucher réels), aube et soir d'après l'heure
+  function dayPhase(w) {
+    const d = new Date(), h = d.getHours() + d.getMinutes() / 60;
+    const night = w ? !w.day : (h < 7 || h >= 20.5);
+    if (night) return 'night';
+    if (h < 8.5) return 'dawn';
+    if (h >= 18) return 'dusk';
+    return 'day';
+  }
+  // ce que montre le décor : temps qu'il fait (réel ou choisi), moment de la journée
+  function skyScene() {
+    const o = state.saverScene;  // économiseur d'écran : il choisit lui-même l'ambiance
+    const bg = o ? (o.aurora ? 'aurora' : 'weather') : state.prefs.bg || 'weather', w = state.weather;
+    if (bg === 'none') return null;
+    let kind = o ? o.kind : bg === 'weather' ? (w ? w.kind : 'clear') : { stars: 'clear', aurora: 'clear', rain: 'rain', snow: 'snow' }[bg];
+    let phase = o ? o.phase : bg === 'stars' || bg === 'aurora' ? 'night' : dayPhase(bg === 'weather' ? w : null);
+    const bright = kind === 'clear' || kind === 'partly';
+    const pal = phase === 'night' ? (bright ? PAL.night : PAL.murk)
+      : (phase === 'dawn' || phase === 'dusk') && bright ? PAL[phase]
+      : PAL[kind === 'partly' ? 'clear' : kind] || PAL.cloudy;
+    const orb = !bright ? 'none' : phase === 'night' ? 'moon' : 'sun';
+    const layers = [];
+    if (orb === 'sun' && phase === 'day' && kind === 'clear') layers.push('rays');
+    if (phase === 'night' && bright) layers.push('stars');
+    if (bg === 'aurora') layers.push('aurora');
+    if (kind === 'partly') layers.push('clouds');
+    if (kind === 'cloudy') layers.push('clouds', 'dense');
+    if (kind === 'fog') layers.push('fog', 'clouds');
+    if (kind === 'rain') layers.push('clouds', 'dense', 'rain');
+    if (kind === 'storm') layers.push('clouds', 'dense', 'rain', 'heavy', 'flash');
+    if (kind === 'snow') layers.push('clouds', 'snow');
+    return { pal, orb, phase, kind, layers: layers.join(' ') };
+  }
+  let skyKey = '';
+  function applySky() {
+    const sc = skyScene(), stage = $('#stage'), sky = $('#sky'), decor = $('#decor');
+    const key = sc ? `${sc.layers}|${sc.orb}|${sc.phase}|${sc.pal.a}` : 'apps';
+    if (key === skyKey) return;
+    skyKey = key;
+    stage.dataset.bg = sc ? 'decor' : 'apps';
+    if (sc && sc.phase !== 'night' && ['snow', 'fog', 'cloudy', 'clear', 'partly', 'rain'].includes(sc.kind)) stage.dataset.bright = '';
+    else delete stage.dataset.bright;
+    sky.classList.toggle('on', !!sc);
+    if (!sc) { sky.dataset.sky = ''; return; }
+    const p = sc.pal;
+    const vars = { '--sky-a': p.a, '--sky-b': p.b, '--far': p.far, '--mid': p.mid, '--near': p.near, '--lake': p.lake, '--tree': p.tree, '--cap': p.cap,
+      '--orb': sc.orb === 'moon' ? '#f1efe6' : sc.phase === 'day' ? '#fff6d8' : '#ffd2a3',
+      '--orb-glow': sc.orb === 'moon' ? '#a9bcff55' : sc.phase === 'day' ? '#ffd77a99' : '#ff9d6a99',
+      '--orb-y': sc.orb === 'sun' && sc.phase !== 'day' ? '46%' : '24%' };
+    for (const [k, v] of Object.entries(vars)) decor.style.setProperty(k, v);
+    decor.dataset.orb = sc.orb;
+    sky.style.setProperty('--orb-y', vars['--orb-y']);
+    sky.style.setProperty('--cloud', p.cloud);
+    sky.style.setProperty('--cloud-o', p.co);
+    sky.dataset.sky = sc.layers;
+  }
+  function wxLine(w, withCity) {
+    if (!w) return '';
+    return `${icon(wxIcon(w))}<span>${w.temp}° · ${esc(w.label)}${withCity && w.city ? ` · ${esc(w.city)}` : ''}</span>`;
+  }
+
+  // ---------- AirPlay ----------
+  const mirroring = () => state.airplay.state === 'mirroring';
+  function onAirplay(was) {
+    const now = state.airplay.state, dev = state.airplay.device || 'ton iPhone';
+    const ap = $('#ap');
+    ap.hidden = now !== 'mirroring';
+    $('#ap-title').textContent = `Recopie de l’écran : ${dev}`;
+    $('#ap-sub').textContent = state.live ? 'B ou bouton Xbox pour arrêter · ≡ pour le centre de contrôle' : 'Maquette : sur le PC, l’écran de l’iPhone s’affiche ici. B pour arrêter.';
+    if (now === 'mirroring' && was !== 'mirroring') {
+      stopSaver();
+      if (state.panel) closePanel({ resume: false });
+      if (!state.live) toast('airplay', `${dev} recopie son écran sur Scaros.`);
+    } else if (now !== 'mirroring' && was === 'mirroring') {
+      poke();
+      toast('airplay', 'Recopie terminée.');
+      if (!state.launched && !state.panel) setFocus(state.focus);
+    }
+    renderStatus();
+    rerenderPane();
+  }
+  function stopAirplay() {
+    if (state.live) api('/api/airplay', { action: 'stop' }).catch(() => {});
+    else { const was = state.airplay.state; state.airplay.state = 'idle'; onAirplay(was); }
+  }
+
+  function submitCity() {
+    const q = state.cityQuery.trim();
+    if (q.length < 2) return toast('search', 'Tape au moins deux lettres.');
+    state.cityResults = null;
+    openPanel('cityresults');
+    if (!state.live) {
+      setTimeout(() => {
+        const name = q.charAt(0).toUpperCase() + q.slice(1);
+        state.cityResults = [{ name, admin: 'Hauts-de-France', country: 'France', lat: 50.63, lon: 3.06 }, { name, admin: 'Québec', country: 'Canada', lat: 46.81, lon: -71.21 }];
+        if (state.panel === 'cityresults') renderPanel();
+      }, 600);
+      return;
+    }
+    api('/api/weather/search?q=' + encodeURIComponent(q))
+      .then(r => { state.cityResults = r.results || []; })
+      .catch(() => { state.cityResults = { error: true }; })
+      .finally(() => { if (state.panel === 'cityresults') renderPanel(); });
+  }
+
+  // ---------- Wi-Fi ----------
+  function openPassword() {
+    state.pw = ''; state.pwShow = false; state.kbMode = 'abc'; state.kbShift = false;
+    openPanel('wifipass');
+  }
+  function wifiConnect(ssid, password) {
+    if (state.live) { api('/api/wifi/connect', { ssid, password }).catch(() => toast('alert', 'Scaros ne répond pas.')); return; }
+    wifiToast('connecting', ssid);
+    setTimeout(() => {
+      const n = state.wifiList.find(x => x.ssid === ssid);
+      if (!n) return;
+      if (n.secure && !n.known && (!password || password.length < 8)) return wifiToast('badpass', ssid);
+      state.wifiList.forEach(x => { x.active = x === n; });
+      n.known = true;
+      state.wifiList.sort((a, b) => (b.active - a.active) || (b.known - a.known) || (b.signal - a.signal));
+      wifiToast('connected', ssid);
+      renderStatus(); rerenderPane();
+    }, 1500);
+  }
+  function wifiToast(st, ssid) {
+    const msg = {
+      connecting: ['wifi', `Connexion à ${ssid}…`, 30000],
+      connected: ['wifi', `Connecté à ${ssid}.`],
+      badpass: ['lock', `Mot de passe incorrect pour ${ssid}.`, 5000],
+      needpass: ['lock', `${ssid} demande son mot de passe.`, 5000],
+      failed: ['alert', `Impossible de se connecter à ${ssid}.`, 5000],
+      forgotten: ['wifi', `${ssid} est oublié.`]
+    }[st];
+    if (msg) toast(...msg);
+    if ((st === 'badpass' || st === 'needpass') && state.panel !== 'wifipass') {
+      state.wifiSel = ssid;
+      if (!state.panel) { openPanel('settings'); openPanel('wifi'); }
+      openPassword();
+    }
+  }
+
+  // ---------- préférences : taille du texte, veille automatique ----------
+  function currentLook() {
+    const th = state.prefs.theme;
+    if (th === 'auto') { const h = new Date().getHours(); return h >= 7 && h < 19 ? 'light' : 'dark'; }
+    return th === 'light' ? 'light' : 'dark';
+  }
+  function applyPrefs() {
+    const root = document.documentElement, ts = state.prefs.textScale;
+    if (ts && ts !== 'normal') root.dataset.text = ts;
+    else delete root.dataset.text;
+    if (currentLook() === 'light') root.dataset.look = 'light';
+    else delete root.dataset.look;
+    if ($('#sky')) applySky();
+  }
+  // ---------- économiseur d'écran ----------
+  // Après quelques minutes sans toucher au menu : le paysage de l'accueil en plein écran, qui avance
+  // lentement et change d'ambiance chaque minute (fondu au noir). L'heure, la date et la météo changent
+  // de coin à chaque scène : rien ne reste au même endroit, la télé ne marque pas. Jamais par-dessus une
+  // appli, une recopie AirPlay, une mise à jour ou un diagnostic ; une touche le ferme sans rien déclencher.
+  const SAVER_SCENES = [
+    { kind: 'clear', phase: 'dawn', label: 'Aube sur le lac' },
+    { kind: 'partly', phase: 'day', label: 'Après-midi en montagne' },
+    { kind: 'clear', phase: 'dusk', label: 'Coucher de soleil' },
+    { kind: 'clear', phase: 'night', label: 'Nuit étoilée' },
+    { kind: 'clear', phase: 'night', aurora: true, label: 'Aurore boréale' },
+    { kind: 'snow', phase: 'day', label: 'Neige sur les sommets' },
+    { kind: 'fog', phase: 'day', label: 'Brume sur la vallée' },
+    { kind: 'rain', phase: 'day', label: 'Averse sur le lac' }
+  ];
+  const SAVER_POS = ['bl', 'tr', 'br', 'tl'];
+  const SAVER_SCENE_MS = 60000, SAVER_FADE_MS = 1100;
+  let saverList = [], saverIdx = 0, saverTimers = [], saverSwap = null, saverFrom = null;
+  // activé ou non (Réglages › Affichage et veille), et le délai, gardé quand on le coupe puis le rallume
+  function saverEnabled() {
+    const on = state.prefs.saverOn;
+    return on ? on !== 'off' : Number(state.prefs.saver) !== 0;  // version 0.7 : « Jamais » était saver = 0
+  }
+  function saverDelay() {
+    const v = Number(state.prefs.saver);
+    return [2, 5, 10, 15].includes(v) ? v : 5;
+  }
+  const saverMinutes = () => saverEnabled() ? saverDelay() : 0;
+  function canSaver() {
+    return !state.saver && !state.launched && !mirroring() && !state.power && !state.booting
+      && !(state.update && state.update.running) && !(state.diag && state.diag.running) && !(state.bt && state.bt.scanning);
+  }
+  function renderSaverInfo() {
+    const d = new Date();
+    $('#ss-time').textContent = fT.format(d);
+    $('#ss-date').textContent = fD.format(d);
+    // sur une ambiance qui n'est pas le temps réel, la ville rappelle que la météo affichée, elle, est vraie
+    const live = state.saverScene && state.saverScene.live;
+    $('#ss-wx').innerHTML = state.weather ? wxLine(state.weather, !live) : '';
+  }
+  function saverScene(i) {
+    const sc = saverList[i % saverList.length], w = state.weather;
+    state.saverScene = sc.live
+      ? { live: true, kind: w ? w.kind : 'clear', phase: dayPhase(w), label: w && w.city ? `En ce moment à ${w.city}` : 'En ce moment' }
+      : sc;
+    applySky();
+    const pos = SAVER_POS[i % SAVER_POS.length];
+    $('#ss-info').dataset.pos = pos;
+    // le soleil ou la lune passe du côté opposé à l'heure : jamais l'un derrière l'autre
+    for (const el of [$('#decor'), $('#sky')]) el.style.setProperty('--orb-x', pos.endsWith('r') ? '26%' : '74%');
+    $('#ss-cap').textContent = state.saverScene.label;
+    renderSaverInfo();
+    // le travelling repart d'un autre point à chaque scène
+    const st = $('#stage');
+    st.style.setProperty('--kb-o', `${30 + (i * 37) % 40}% ${45 + (i * 23) % 25}%`);
+    st.style.setProperty('--kb-x', `${i % 2 ? 1.5 : -1.5}%`);
+    for (const el of [$('#decor'), $('#sky')]) { el.style.animation = 'none'; void el.offsetWidth; el.style.animation = ''; }
+  }
+  function startSaver() {
+    if (state.saver) return;
+    state.saver = true;
+    // d'abord le temps qu'il fait en ce moment, puis les autres ambiances dans le désordre
+    saverList = [{ live: true }, ...SAVER_SCENES.slice().sort(() => Math.random() - 0.5)];
+    saverIdx = 0; saverFrom = null;
+    const sv = $('#ss');
+    sv.hidden = false;
+    requestAnimationFrame(() => sv.classList.add('dark'));
+    saverTimers.push(setTimeout(() => {
+      if (!state.saver) return;
+      $('#tv').classList.add('screensaver');
+      saverScene(0);
+      sv.classList.add('on');
+      sv.classList.remove('dark');
+    }, reduce ? 30 : SAVER_FADE_MS));
+    saverTimers.push(setInterval(() => {
+      sv.classList.add('dark');
+      clearTimeout(saverSwap);
+      saverSwap = setTimeout(() => { if (state.saver) { saverScene(++saverIdx); sv.classList.remove('dark'); } }, reduce ? 30 : SAVER_FADE_MS + 400);
+    }, SAVER_SCENE_MS));
+    saverTimers.push(setInterval(renderSaverInfo, 10000));
+  }
+  // renvoie vrai s'il était affiché (la touche a seulement servi à le fermer)
+  function stopSaver() {
+    if (!state.saver) return false;
+    state.saver = false;
+    saverTimers.forEach(t => { clearTimeout(t); clearInterval(t); });
+    saverTimers = [];
+    clearTimeout(saverSwap);
+    const sv = $('#ss');
+    sv.hidden = true;
+    sv.classList.remove('dark', 'on');
+    $('#tv').classList.remove('screensaver', 'idle');
+    for (const el of [$('#decor'), $('#sky')]) { el.style.animation = ''; el.style.removeProperty('--orb-x'); }
+    state.saverScene = null;
+    applySky();
+    lastInputAt = Date.now();
+    return true;
+  }
+  setInterval(() => {
+    const min = saverMinutes();
+    if (min > 0 && canSaver() && Date.now() - lastInputAt > min * 60000) startSaver();
+  }, 5000);
+  // souris (mode souris du téléphone, vraie souris) : un vrai déplacement le ferme, un clic aussi
+  addEventListener('pointermove', e => {
+    if (!state.saver || e.pointerType !== 'mouse') return;
+    if (!saverFrom) { saverFrom = [e.clientX, e.clientY]; return; }
+    if (Math.hypot(e.clientX - saverFrom[0], e.clientY - saverFrom[1]) > 12) stopSaver();
+  }, { passive: true });
+  $('#ss').addEventListener('pointerdown', e => { e.preventDefault(); stopSaver(); });
+
+  function savePrefsLocal() { try { localStorage.setItem('scaros-prefs', JSON.stringify(state.prefs)); } catch (e) {} }
+  try { Object.assign(state.prefs, JSON.parse(localStorage.getItem('scaros-prefs') || '{}')); } catch (e) {}
+  applyPrefs();
+  setInterval(() => {
+    const min = Number(state.prefs.autoSleep) || 0;
+    if (!min || state.launched || state.power || state.booting) return;
+    if (Date.now() - lastInputAt > min * 60000) { closePanel(); sleep(); }
+  }, 20000);
+
+  // ---------- écran ----------
+  function applyOutput(silent) {
+    if (!state.live) {
+      state.output = computeOutput();
+      state.res = state.output === 'tv' ? RES_DEMO[state.tvRes] : '1366×768';
+    }
+    const o = state.output;
+    if (o !== lastOut) {
+      lastOut = o;
+      if (!silent) {
+        const bl = $('#blink'); bl.classList.remove('run'); void bl.offsetWidth; bl.classList.add('run');
+        toast(o === 'tv' ? 'tv' : 'laptop', o === 'tv' ? 'L’image passe sur la télé.' : 'Retour sur l’écran du PC.');
+        displayToastAt = Date.now();
+      }
+    }
+    renderStatus();
+    if (state.focus === 'settings') renderShelf();
+    if (!state.live) demoAudio();
+  }
+  function toggleHdmi() {
+    if (state.live) { if (state.dry) api('/api/dev/hdmi', {}).catch(() => {}); return; }
+    state.hdmi = !state.hdmi;
+    if (!state.hdmi && state.mode === 'tv') state.mode = 'auto';
+    const before = lastOut;
+    applyOutput();
+    if (lastOut === before) toast('tv', state.hdmi ? 'Télé branchée. Scaros reste sur l’écran du PC, comme tu l’as choisi.' : 'Télé débranchée.');
+  }
+
+  // ---------- son & Bluetooth ----------
+  function onAudio(m) {
+    state.audio = { mode: m.mode, target: m.target, device: m.device };
+    renderStatus();
+    rerenderPane();
+    if (state.focus === 'settings') renderShelf();
+    if (!m.changed || !audioReady) return;
+    const screenTarget = state.output === 'tv' ? 'tv' : 'pc';
+    let text = `Le son passe sur ${m.device}.`;
+    if (Date.now() - displayToastAt < 2000) {
+      text = m.target === screenTarget
+        ? (state.output === 'tv' ? 'Image et son passent sur la télé.' : 'Retour sur l’écran du PC.')
+        : `Image sur ${state.output === 'tv' ? 'la télé' : 'l’écran du PC'}, son sur ${m.device}.`;
+    }
+    toast(m.target === 'bt' ? 'headphones' : m.target === 'tv' ? 'tv' : 'speaker', text);
+  }
+  function demoAudio() {
+    const bt = btAudioDevice();
+    const screenTarget = state.output === 'tv' ? 'tv' : 'pc', mode = state.audio.mode;
+    const target = mode === 'tv' ? (state.hdmi ? 'tv' : 'pc') : mode === 'pc' ? 'pc' : (bt ? 'bt' : screenTarget);
+    const device = target === 'bt' ? bt.name : AUDIO_NAMES[target];
+    onAudio({ mode, target, device, changed: target !== state.audio.target || device !== state.audio.device });
+  }
+  function btToast(st, name, known) {
+    // appareil déjà mémorisé : surtout ne pas pousser à le réappairer
+    const msg = {
+      connecting: ['bluetooth', `Connexion à ${name}…`, 15000],
+      connected: ['bluetooth', `${name} est connecté.`],
+      failed: known
+        ? ['alert', `Impossible de joindre ${name}. Allume-le près du PC (pas besoin de le réappairer : il est mémorisé). S’il est connecté à ton téléphone, déconnecte-le d’abord.`, 8000]
+        : ['alert', `Impossible de joindre ${name}. Vérifie qu’il est allumé et en mode appairage.`, 5200],
+      noaudio: ['alert', `${name} ne peut pas recevoir le son : le module son Bluetooth manque. Relance update.sh.`, 8000],
+      unreachable: ['alert', `${name} est introuvable. Ouvre le boîtier près du PC, ou déconnecte-les de ton téléphone, puis réessaie.`, 8000],
+      repair: ['alert', `${name} ne reconnaît plus Scaros. Choisis « Oublier cet appareil », puis appaire-le à nouveau.`, 8000],
+      disconnected: ['bluetooth', `${name} est déconnecté.`],
+      removed: ['bluetooth', `${name} est oublié.`]
+    }[st];
+    if (msg) toast(...msg);
+  }
+  function demoScan() {
+    if (state.bt.scanning) return;
+    state.bt.scanning = true; rerenderPane();
+    setTimeout(() => {
+      [['AA:00:00:00:00:01', 'Casque Bluetooth (exemple)'], ['AA:00:00:00:00:02', 'Enceinte Bluetooth (exemple)']].forEach(([mac, name]) => {
+        if (!state.bt.devices.some(d => d.mac === mac)) state.bt.devices.push({ mac, name, kind: 'audio', paired: false, connected: false });
+      });
+      rerenderPane();
+    }, 1800);
+    setTimeout(() => { state.bt.scanning = false; rerenderPane(); }, 5000);
+  }
+  function demoBt(action, mac) {
+    const d = state.bt.devices.find(x => x.mac === mac);
+    if (!d) return;
+    if (action === 'connect') {
+      btToast('connecting', d.name);
+      setTimeout(() => { d.paired = true; d.connected = true; btToast('connected', d.name); rerenderPane(); demoAudio(); }, 1200);
+    } else if (action === 'disconnect') {
+      d.connected = false; btToast('disconnected', d.name); rerenderPane(); demoAudio();
+    } else if (action === 'remove') {
+      state.bt.devices = state.bt.devices.filter(x => x !== d); btToast('removed', d.name); rerenderPane(); demoAudio();
+    }
+  }
+
+  // ---------- ouverture d'une appli ----------
+  let launchTimer, slowTimer, awayTimer;
+  function launch(id) {
+    stopSaver();
+    if (id === 'settings') { openPanel('settings'); return; }
+    openOverlay(id);
+    if (state.live) api('/api/launch', { id }).catch(() => { closeLaunch(false); toast('alert', 'Scaros ne répond pas.'); });
+  }
+  // la fenêtre de l'appli est à l'écran : le menu derrière s'arrête de dessiner
+  function appShown(id) {
+    const t = byId[id];
+    clearTimeout(slowTimer);
+    $('#l-status').textContent = `${t.name} est ouvert`;
+    $('#l-note').textContent = '';
+    $('#l-fine').textContent = state.live ? 'Bouton Xbox : retour au menu · ≡ : centre de contrôle' : '';
+    L.classList.remove('slow');
+    L.classList.add('ready');
+    clearTimeout(awayTimer);
+    awayTimer = setTimeout(() => { if (state.launched === id) $('#tv').classList.add('away'); }, 700);
+  }
+  function openOverlay(id, instant) {
+    const t = byId[id];
+    if (state.panel) closePanel({ resume: false });
+    const r = $('#t-' + id + ' .icon-art').getBoundingClientRect();
+    L.style.setProperty('--t', `${r.top}px`);
+    L.style.setProperty('--l', `${r.left}px`);
+    L.style.setProperty('--r', `${innerWidth - r.right}px`);
+    L.style.setProperty('--b', `${innerHeight - r.bottom}px`);
+    L.style.setProperty('--lbg', t.bg);
+    L.style.setProperty('--lfg', t.fg || '#fff');
+    $('#l-logo').innerHTML = ART[id]();
+    $('#l-status').textContent = `Ouverture de ${t.name}…`;
+    $('#l-note').textContent = ''; $('#l-fine').textContent = '';
+    L.classList.remove('ready', 'slow');
+    state.launched = id;
+    if (instant) L.style.transition = 'none';
+    L.hidden = false; void L.offsetWidth; L.classList.add('on');
+    if (instant) { void L.offsetWidth; L.style.transition = ''; }
+    clearTimeout(launchTimer); clearTimeout(slowTimer);
+    // un premier lancement peut être long sur ce petit PC : on le dit plutôt que de laisser croire à une panne
+    slowTimer = setTimeout(() => {
+      if (state.launched !== id || L.classList.contains('ready')) return;
+      $('#l-note').textContent = `${t.name} met un peu de temps à s’ouvrir. La première fois, ça peut prendre jusqu’à une minute.`;
+      $('#l-fine').textContent = 'B pour revenir au menu';
+      L.classList.add('slow');
+    }, state.live ? 12000 : 60000);
+    if (!state.live) {
+      launchTimer = setTimeout(() => {
+        $('#l-status').textContent = `${t.name} est ouvert`;
+        $('#l-note').textContent = `Sur le PC, ${t.name} s’affiche ici en plein écran, en interface TV.`;
+        $('#l-fine').textContent = 'Maquette : aucune appli n’est vraiment lancée. ≡ ouvre le centre de contrôle par-dessus.';
+        L.classList.add('ready');
+        if (!state.panel) $('#l-back').focus({ preventScroll: true });
+      }, reduce ? 0 : 1400);
+    }
+  }
+  function closeLaunch(notify = true) {
+    // retour au menu après une appli : ça compte comme une activité, sinon l'économiseur ou la veille
+    // partiraient aussitôt (le temps passé dans l'appli n'est pas du temps « sans toucher au menu »)
+    poke();
+    clearTimeout(launchTimer); clearTimeout(slowTimer); clearTimeout(awayTimer);
+    const was = state.launched;
+    state.launched = null;
+    $('#tv').classList.remove('away');
+    if (state.live && notify && was) api('/api/close', {}).catch(() => {});
+    L.classList.remove('on');
+    setTimeout(() => { if (!state.launched) L.hidden = true; }, 600);
+    setFocus(state.focus);
+  }
+  function goHome() {
+    if (state.power === 'sleep') { wake(); return; }
+    if (state.panel) closePanel({ resume: false });
+    if (state.launched) closeLaunch(false);
+    setFocus(state.focus);
+  }
+  function channel(a) {
+    const t = APPS.find(x => 'ch' + x.ch === a);
+    if (!t) return;
+    setFocus(t.id, !state.launched);
+    launch(t.id);
+  }
+
+  // ---------- démarrage, veille, extinction ----------
+  let bootTimer, firstBoot = true;
+  function boot() {
+    state.booting = true;
+    B.hidden = false; B.classList.remove('run', 'out'); void B.offsetWidth; B.classList.add('run');
+    clearTimeout(bootTimer);
+    bootTimer = setTimeout(endBoot, reduce ? 0 : 3750);
+  }
+  function endBoot() {
+    if (!state.booting) return;
+    state.booting = false; clearTimeout(bootTimer);
+    B.classList.add('out');
+    stage.classList.remove('enter', 'off-anim'); void stage.offsetWidth; stage.classList.add('enter');
+    setTimeout(() => { if (!state.booting) B.hidden = true; }, 750);
+    setFocus(state.focus);
+    if (firstBoot) {
+      firstBoot = false;
+      const touch = matchMedia('(pointer: coarse)').matches;
+      setTimeout(() => {
+        if (state.pad) return;
+        if (state.live) toast('gamepad', 'Allume ta manette Xbox. Le clavier marche aussi : flèches, Entrée, Échap.', 6000);
+        else toast(touch ? 'phone' : 'gamepad', touch
+          ? 'Touche une icône pour l’ouvrir. Sur le PC, tout se fait à la manette.'
+          : 'Flèches et Entrée pour naviguer, Échap pour revenir, M pour le centre de contrôle.', 6000);
+      }, 1000);
+    }
+  }
+  function showOff(kind, msg) {
+    OFF.dataset.kind = kind;
+    $('#off-msg').textContent = msg;
+    OFF.classList.toggle('fade', kind === 'sleep');
+    OFF.hidden = false;
+  }
+  function powerOff(restart) {
+    state.power = 'busy';
+    stage.classList.add('off-anim');
+    if (state.live) api('/api/power', { action: restart ? 'restart' : 'off' }).catch(() => {});
+    setTimeout(() => {
+      if (state.live) showOff('off', restart ? 'Redémarrage…' : 'Extinction…');
+      else if (restart) { state.power = null; boot(); }
+      else { state.power = 'off'; showOff('off', 'Scaros est éteint. Appuie sur une touche pour rallumer.'); }
+    }, reduce ? 30 : 700);
+  }
+  function sleep() { stopSaver(); state.power = 'sleep'; showOff('sleep', 'Appuie sur une touche pour revenir.'); }
+  function wake() {
+    const was = state.power;
+    state.power = null; OFF.hidden = true;
+    if (was === 'off') boot(); else setFocus(state.focus);
+  }
+
+  // ---------- notifications & volume ----------
+  let toastTimer, volTimer;
+  function toast(ic, text, ms = 3600) {
+    T.querySelector('.toast-ic').innerHTML = icon(ic);
+    T.querySelector('.toast-text').textContent = text;
+    T.classList.add('on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => T.classList.remove('on'), ms);
+  }
+  function showVol() {
+    const level = state.volume ?? 0;
+    V.style.setProperty('--v', state.muted ? 0 : level / 100);
+    V.classList.toggle('muted', state.muted);
+    $('#vol-ic').innerHTML = icon(state.muted ? 'mute' : 'speaker');
+    $('#vol-num').textContent = state.muted ? 'Muet' : level;
+    V.classList.add('on');
+    clearTimeout(volTimer);
+    volTimer = setTimeout(() => V.classList.remove('on'), 1600);
+  }
+  function vol(d) {
+    if (state.live) { api('/api/input', { action: d > 0 ? 'volup' : 'voldown' }).catch(() => {}); return; }
+    state.volume = Math.max(0, Math.min(100, state.volume + d));
+    state.muted = false;
+    showVol(); renderStatus();
+    if (state.panel === 'sound' || state.panel === 'control') rerenderPane();
+  }
+  // mode souris : le pavé du téléphone devient un trackpad, la manette déplace le curseur dans les applis
+  function onMouse(on) {
+    if (on === state.mouse) return;
+    state.mouse = on;
+    toast('mouse', on ? 'Mode souris activé. Dans les applis : stick gauche pour le curseur, A pour cliquer, X pour le clic droit, stick droit pour défiler.'
+      : 'Mode souris désactivé : la manette revient aux flèches.', on ? 6500 : 3000);
+    if (state.panel === 'control' || state.panel === 'controller') rerenderPane();
+  }
+
+  function mute() {
+    if (state.live) { api('/api/input', { action: 'mute' }).catch(() => {}); return; }
+    state.muted = !state.muted;
+    showVol(); renderStatus();
+    if (state.panel === 'sound' || state.panel === 'control') rerenderPane();
+  }
+
+  // ---------- télécommande de démo (maquette) ----------
+  function showPhone(on) {
+    state.phoneDemo = on; P.hidden = !on; renderStatus();
+    if (on) toast('phone', 'Téléphone connecté. Essaie les flèches de la télécommande.');
+  }
+  P.addEventListener('click', e => {
+    const b = e.target.closest('[data-pact]');
+    if (!b) return;
+    const a = b.dataset.pact;
+    if (a === 'close') { showPhone(false); return; }
+    b.classList.remove('press'); void b.offsetWidth; b.classList.add('press');
+    act(a);
+  });
+  $('#psearch').addEventListener('submit', e => {
+    e.preventDefault();
+    const v = $('#pinput').value.trim();
+    if (!v) return;
+    toast('send', `Envoyé à l’écran : « ${v} »`);
+    $('#pinput').value = '';
+  });
+
+  // ---------- une seule entrée pour toutes les commandes ----------
+  function act(a) {
+    poke();
+    // économiseur : la première touche le ferme sans rien faire d'autre (le volume, lui, marche)
+    if (state.saver && !['volup', 'voldown', 'mute'].includes(a)) { stopSaver(); return; }
+    if (state.booting) { endBoot(); return; }
+    if (state.power === 'busy') return;
+    if (state.power) { if (!(state.live && state.power === 'off')) wake(); return; }
+    if (a === 'volup') return vol(5);
+    if (a === 'voldown') return vol(-5);
+    if (a === 'mute') return mute();
+    if (a === 'menu') return toggleControl();
+    if (a === 'qr') { if (state.panel !== 'remote') { closePanel({ resume: false }); openPanel('remote'); } return; }
+    if (state.panel) {
+      if (a === 'home') { closePanel({ resume: false }); if (state.launched) closeLaunch(); return; }
+      const cur = state.pItems[state.pIdx];
+      if ((a === 'left' || a === 'right') && cur && cur.dataset.adjust === 'vol') vol(a === 'left' ? -5 : 5);
+      else if (a === 'up' || a === 'down' || a === 'left' || a === 'right') {
+        const next = cur && nearest(cur, a, state.pItems);
+        if (next) setPIdx(state.pItems.indexOf(next));
+        else if (a === 'up' && state.pIdx > 0) setPIdx(state.pIdx - 1);
+        else if (a === 'down' && state.pIdx < state.pItems.length - 1) setPIdx(state.pIdx + 1);
+        else if (a === 'down' || a === 'up') scrollRest(a === 'down' ? 1 : -1);
+      }
+      else if (a === 'ok') { const el = state.pItems[state.pIdx]; if (el) activate(el.dataset.act); }
+      else if (a === 'back') backPanel();
+      else if (a.startsWith('ch')) { closePanel({ resume: false }); channel(a); }
+      return;
+    }
+    if (mirroring()) {
+      if (a === 'back' || a === 'home') stopAirplay();
+      return;
+    }
+    if (state.launched) {
+      if (a === 'back' || a === 'home') closeLaunch();
+      else if (a.startsWith('ch')) channel(a);
+      return;
+    }
+    if (a === 'up' || a === 'down' || a === 'left' || a === 'right') move(a);
+    else if (a === 'ok') launch(state.focus);
+    else if (a === 'home') setFocus(APPS[0].id);
+    else if (a.startsWith('ch')) channel(a);
+  }
+
+  function poke() {
+    lastInputAt = Date.now();
+    $('#tv').classList.remove('idle');
+  }
+  setInterval(() => { if (Date.now() - lastInputAt > 45000) $('#tv').classList.add('idle'); }, 5000);
+
+  // clavier (sur le PC, la manette et le téléphone arrivent aussi ici sous forme de touches)
+  const KEYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'ok',
+    Escape: 'back', Backspace: 'back', Home: 'home', '+': 'volup', '=': 'volup', '-': 'voldown',
+    m: 'menu', M: 'menu', ContextMenu: 'menu', F1: 'menu', q: 'qr', Q: 'qr',
+    '1': 'ch1', '2': 'ch2', '3': 'ch3', '4': 'ch4', '5': 'ch5', '0': 'mute' };
+  addEventListener('keydown', e => {
+    if (e.target.closest && e.target.closest('input, textarea')) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (state.saver) { e.preventDefault(); act(KEYS[e.key] || 'wake'); return; }
+    if (KBT[state.panel] && (e.key.length === 1 || e.key === 'Backspace')) {
+      e.preventDefault();
+      poke();
+      if (e.key === 'Backspace') eraseChar(); else typeChar(e.key);
+      // après une frappe au clavier ou au téléphone, Entrée valide directement
+      const okKey = state.pItems.find(el => el.classList.contains('go'));
+      renderPanel(okKey ? okKey.dataset.act : currentAct());
+      return;
+    }
+    if ((e.key === 'h' || e.key === 'H') && !state.booting && !state.power) {
+      toggleHdmi();
+      if (state.panel === 'display' && !state.live) renderPanel(currentAct());
+      return;
+    }
+    const a = KEYS[e.key];
+    if (!a) { if (state.booting) endBoot(); else if (state.power && state.power !== 'busy') act('ok'); return; }
+    // Entrée sur un vrai bouton (téléphone de démo, « retour ») garde son clic normal
+    if (a === 'ok' && e.target.closest && e.target.closest('.pbtn, .l-back, .phone-x, .dpad button')) return;
+    e.preventDefault();
+    act(a);
+  });
+
+  // souris & tactile
+  tiles.forEach(el => {
+    el.addEventListener('click', () => {
+      if (state.booting || state.power) return act('ok');
+      setFocus(el.dataset.id); launch(el.dataset.id);
+    });
+    el.addEventListener('pointermove', e => {
+      if (e.pointerType === 'mouse' && state.focus !== el.dataset.id && !state.panel && !state.launched) setFocus(el.dataset.id);
+    });
+    el.addEventListener('focus', () => { if (state.focus !== el.dataset.id) setFocus(el.dataset.id, false); });
+  });
+  addEventListener('pointerdown', poke, { passive: true });
+  addEventListener('pointermove', () => { if ($('#tv').classList.contains('idle')) poke(); }, { passive: true });
+  pane.addEventListener('click', e => {
+    const el = e.target.closest('[data-act]');
+    if (!el || el.disabled) return;
+    const i = state.pItems.indexOf(el);
+    if (i >= 0) setPIdx(i);
+    activate(el.dataset.act);
+  });
+  pane.addEventListener('pointermove', e => {
+    if (e.pointerType !== 'mouse') return;
+    const el = e.target.closest('[data-act]');
+    const i = el ? state.pItems.indexOf(el) : -1;
+    if (i >= 0 && i !== state.pIdx) setPIdx(i);
+  });
+  pane.addEventListener('focusin', e => {
+    const i = state.pItems.indexOf(e.target);
+    if (i >= 0 && i !== state.pIdx) setPIdx(i);
+  });
+  scrim.addEventListener('click', closePanel);
+  $('#l-back').addEventListener('click', () => closeLaunch());
+  B.addEventListener('click', endBoot);
+  OFF.addEventListener('click', () => act('ok'));
+
+  // manette lue par le navigateur : pour la maquette, et sur le PC seulement si scaros.py ne peut pas la lire
+  const held = {};
+  let polling = false;
+  const browserPad = () => !(state.live && state.padSupport);
+  function pads() { try { return navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : []; } catch (e) { return []; } }
+  function repeat(k, on, now) {
+    const h = held[k] || (held[k] = { on: false, next: 0 });
+    if (on && !h.on) { act(k); h.next = now + 380; }
+    else if (on && now >= h.next) { act(k); h.next = now + 120; }
+    h.on = on;
+  }
+  function edge(k, on, a) {
+    const h = held[k] || (held[k] = { on: false });
+    if (on && !h.on) act(a);
+    h.on = on;
+  }
+  function padLoop() {
+    const gp = browserPad() ? pads()[0] : null;
+    if (gp) {
+      const now = performance.now(), b = i => !!(gp.buttons[i] && gp.buttons[i].pressed);
+      const x = gp.axes[0] || 0, y = gp.axes[1] || 0;
+      repeat('up', b(12) || y < -.55, now);
+      repeat('down', b(13) || y > .55, now);
+      repeat('left', b(14) || x < -.55, now);
+      repeat('right', b(15) || x > .55, now);
+      edge('a', b(0), 'ok'); edge('b', b(1), 'back'); edge('guide', b(16), 'home'); edge('start', b(9), 'menu');
+      edge('lb', b(4), 'voldown'); edge('rb', b(5), 'volup');
+    }
+    if (polling) requestAnimationFrame(padLoop);
+  }
+  addEventListener('gamepadconnected', e => {
+    if (!browserPad()) return;
+    state.pad = e.gamepad.id; renderStatus();
+    toast('gamepad', /xbox|xinput|045e/i.test(e.gamepad.id) ? 'Manette Xbox connectée.' : 'Manette connectée.');
+    if (!polling) { polling = true; padLoop(); }
+  });
+  addEventListener('gamepaddisconnected', () => {
+    if (!browserPad()) return;
+    const left = pads();
+    state.pad = left.length ? left[0].id : null;
+    if (!left.length) polling = false;
+    renderStatus(); toast('gamepad', 'Manette déconnectée.');
+  });
+
+  // horloge
+  const fT = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const fDay = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long' });
+  const fD = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+  function tick() {
+    const d = new Date();
+    $('#clock').textContent = fT.format(d);
+    $('#sleep-clock').textContent = fT.format(d);
+    $('#sleep-date').textContent = fD.format(d);
+    const cc = pane.querySelector('.cc-time');
+    if (cc) cc.textContent = fT.format(d);
+    if (state.prefs.theme === 'auto') applyPrefs();  // bascule clair/sombre à 7 h et 19 h
+    applySky();  // aube, journée, soir : le décor suit l'heure
+  }
+  tick(); setInterval(tick, 10000);
+
+  // démarrage
+  applyOutput(true);
+  updateHints();
+  renderStatus();
+  setFocus(APPS[0].id, false);
+  renderShelf();
+  boot();
+  connect().then(live => {
+    audioReady = true;
+    if (!live) return;
+    renderAll();
+    listen();
+    syncApp(firstState);
+  });
+})();
+</script>
+</html>
