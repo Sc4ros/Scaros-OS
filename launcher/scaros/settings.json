@@ -1,0 +1,8 @@
+{
+  "weather_place": {
+    "city": "Paris",
+    "lat": 48.86,
+    "lon": 2.35,
+    "auto": true
+  }
+}
